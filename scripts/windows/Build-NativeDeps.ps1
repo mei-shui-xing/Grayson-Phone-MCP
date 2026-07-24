@@ -57,6 +57,12 @@ if (-not $go) { throw 'Go is required: https://go.dev/dl/' }
 $env:JAVA_HOME = $javaHome
 $env:JAVA_11_HOME = $javaHome
 $env:JAVA_17_HOME = $javaHome
+$privateBuildPrefix = $env:USERPROFILE
+$remapPathFlag = "--remap-path-prefix=$privateBuildPrefix=/build-user"
+$existingRustFlags = if (Test-Path Env:RUSTFLAGS) { $env:RUSTFLAGS } else { '' }
+if (-not ($existingRustFlags -split '\s+' -contains $remapPathFlag)) {
+    $env:RUSTFLAGS = ($existingRustFlags.Trim() + " $remapPathFlag").Trim()
+}
 $ngrokRoot = Join-Path $repoRoot 'vendor\ngrok-java'
 Push-Location $ngrokRoot
 try {
@@ -137,7 +143,7 @@ function Build-Cloudflared([string]$Abi, [string]$GoArch, [string]$Compiler) {
     $env:CC = Join-Path $ndkBin $Compiler
     Push-Location (Join-Path $repoRoot 'vendor\cloudflared')
     try {
-        & $go build -a -installsuffix cgo '-ldflags=-s -w -extldflags=-Wl,-z,max-page-size=16384' `
+        & $go build -trimpath -a -installsuffix cgo '-ldflags=-s -w -extldflags=-Wl,-z,max-page-size=16384' `
             -o (Join-Path $destination 'libcloudflared.so') '.\cmd\cloudflared'
         if ($LASTEXITCODE -ne 0) { throw "cloudflared $Abi build failed with exit code $LASTEXITCODE" }
     }
