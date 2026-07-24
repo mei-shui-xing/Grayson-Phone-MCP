@@ -33,7 +33,8 @@ try {
             '--tests', '*AppManagementToolsIntegrationTest',
             '--tests', '*ActionExecutorImplTest',
             '--tests', '*MainViewModelTest',
-            '--tests', '*ToolPermissionsIntegrationTest'
+            '--tests', '*ToolPermissionsIntegrationTest',
+            '--tests', '*BuildMetadataTest'
         )
     }
     $gradleArgs += @('--max-workers=2', ':app:assembleGmsDebug', '--stacktrace')

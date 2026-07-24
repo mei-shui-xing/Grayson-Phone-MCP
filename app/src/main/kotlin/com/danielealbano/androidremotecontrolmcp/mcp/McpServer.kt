@@ -167,8 +167,13 @@ class McpServer(
         // BearerTokenAuthPlugin skips paths matching "/health" (no auth required).
         routing {
             get("/health") {
+                val metadata =
+                    """{"status":"healthy","version":"${BuildConfig.VERSION_NAME}",""" +
+                        """"git_commit":"${BuildConfig.GIT_COMMIT}",""" +
+                        """"build_time_utc":"${BuildConfig.BUILD_TIME_UTC}",""" +
+                        """"tool_count":${BuildConfig.MCP_TOOL_COUNT}}"""
                 call.respondText(
-                    """{"status":"healthy","version":"${BuildConfig.VERSION_NAME}"}""",
+                    metadata,
                     ContentType.Application.Json,
                     HttpStatusCode.OK,
                 )

@@ -11,6 +11,8 @@ The app runs directly on your Android device (or emulator) and exposes an HTTP s
 
 > **Warning:** This software is provided "as-is" without warranty of any kind, for **research and educational purposes only**. The authors do not condone the use of this tool for any illegal, unauthorized, or unethical activities. Users are solely responsible for ensuring their use complies with all applicable laws and regulations. By using this software, you agree to use it responsibly and at your own risk.
 
+> **Grayson Alpha operating policy:** no VPN is the recommended configuration; VPN operation remains experimental. While an AI task is running, give the phone to the AI exclusively and continue chatting from the computer. The owner must personally handle lock-screen credentials, biometrics, payments, OTP codes, permission grants and any other sensitive authorization. Pause remote touch before taking the phone back.
+
 ---
 
 ## Demo
@@ -32,7 +34,7 @@ The app runs directly on your Android device (or emulator) and exposes an HTTP s
 - Auto-start on boot
 - Remote access tunnels via Cloudflare Quick Tunnels or ngrok (public HTTPS URL)
 
-### 60 MCP Tools across 15 Categories
+### 66 MCP Tools across 16 Categories
 
 Screen introspection, system actions, touch actions, gestures, node actions, text input, utilities, file operations, app management, usage and screen time, camera, intents, notifications, location, and sharing.
 
@@ -56,7 +58,7 @@ See [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) for the full tool reference with inpu
 
 | Feature | This project | [mobile-mcp] | [Android-MCP] | [android-mcp-server] | [adb-mcp] | [droidrun-mcp] |
 |---------|:-:|:-:|:-:|:-:|:-:|:-:|
-| MCP tools | 60 | 21 | 11 | 5 | 10 | 11 |
+| MCP tools | 66 | 21 | 11 | 5 | 10 | 11 |
 | Runs on the phone (no ADB) | :white_check_mark: | :x: | :x: | :x: | :x: | :x: |
 | Action latency | 10-100 ms | 1-4 s | 1-4 s | 1-4 s | 1-4 s | 1-4 s |
 | Works over the internet | :white_check_mark: | :x: | :x: | :x: | :x: | :x: |

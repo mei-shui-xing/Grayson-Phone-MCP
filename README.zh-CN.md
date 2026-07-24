@@ -1,5 +1,7 @@
 # Grayson Phone MCP（中文说明）
 
+> Alpha 推荐配置：当前优先关闭 VPN 使用；开启 VPN 仍属于实验性。AI 执行期间请让手机由 AI 临时独占，主人继续在电脑上聊天。锁屏密码、生物识别、支付、OTP、系统权限与任何敏感授权必须由主人亲自完成；主人接回手机前先暂停远程触控。
+
 > 本仓库是 `danielealbano/android-remote-control-mcp` 的修改分支，继续保留上游 MIT 许可证与作者归属。
 > 目标是让 ChatGPT 等远程 AI 在本人可随时暂停的前提下，看屏、触控、输入和读取使用时长；不提供远程 Shell、任意 ADB 或权限绕过。
 

@@ -1,5 +1,6 @@
 import org.gradle.process.ExecOperations
 import java.io.FileInputStream
+import java.time.Instant
 import java.time.YearMonth
 import java.util.Properties
 import javax.inject.Inject
@@ -172,6 +173,27 @@ val versionCodeProp =
             )
     }
 
+val gitCommitProp =
+    runGit("rev-parse", "HEAD")
+        ?.takeIf { it.first == 0 }
+        ?.second
+        ?.takeIf { it.matches(Regex("[0-9a-f]{40}")) }
+        ?: "unknown"
+val buildTimeUtcProp =
+    providers
+        .gradleProperty("BUILD_TIME_UTC")
+        .orNull
+        ?: Instant.now().toString()
+val mcpToolCountProp =
+    fileTree("src/main/kotlin/com/danielealbano/androidremotecontrolmcp/mcp/tools") {
+        include("**/*.kt")
+    }.files
+        .sumOf { source ->
+            Regex("""\bserver\.addTool\(""").findAll(source.readText()).count()
+        }.also { count ->
+            require(count > 0) { "Could not derive MCP tool count from registration sources" }
+        }
+
 // A release/bundle artifact must carry a full-history git-derived code. A shallow
 // checkout yields a truncated (wrong, too-low) count, so refuse to build one from a
 // shallow tree — but only for actual release-artifact tasks, so config-only work
@@ -210,6 +232,9 @@ android {
         targetSdk = 34
         versionCode = versionCodeProp
         versionName = versionNameProp
+        buildConfigField("String", "GIT_COMMIT", "\"$gitCommitProp\"")
+        buildConfigField("String", "BUILD_TIME_UTC", "\"$buildTimeUtcProp\"")
+        buildConfigField("int", "MCP_TOOL_COUNT", mcpToolCountProp.toString())
     }
 
     // Distribution flavors: `gms` (full app, GitHub/Play) and `foss` (F-Droid, no Google Play Services).
