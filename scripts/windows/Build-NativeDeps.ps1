@@ -114,19 +114,32 @@ function Ensure-CloudflaredPatch {
         throw "Missing cloudflared Android DNS patch: $patchPath"
     }
 
+    # A failed `git apply --check` is an expected probe result. Windows
+    # PowerShell can otherwise promote native stderr to a terminating error
+    # under ErrorActionPreference=Stop before LASTEXITCODE is inspected.
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
     & git.exe -C $cloudflaredRoot apply --reverse --check $patchPath 2>$null
-    if ($LASTEXITCODE -eq 0) {
+    $reverseCheckExit = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorAction
+    if ($reverseCheckExit -eq 0) {
         Write-Host 'cloudflared Android DNS patch already applied.'
         return
     }
 
+    $ErrorActionPreference = 'Continue'
     & git.exe -C $cloudflaredRoot apply --check $patchPath
-    if ($LASTEXITCODE -ne 0) {
+    $forwardCheckExit = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorAction
+    if ($forwardCheckExit -ne 0) {
         throw 'cloudflared patch does not apply cleanly. Reset the submodule to the pinned commit and retry.'
     }
 
+    $ErrorActionPreference = 'Continue'
     & git.exe -C $cloudflaredRoot apply $patchPath
-    if ($LASTEXITCODE -ne 0) {
+    $applyExit = $LASTEXITCODE
+    $ErrorActionPreference = $previousErrorAction
+    if ($applyExit -ne 0) {
         throw 'Failed to apply cloudflared Android DNS patch.'
     }
     Write-Host 'Applied cloudflared Android DNS patch.'
