@@ -33,7 +33,7 @@ This document provides a comprehensive reference for all MCP tools available in 
 
 ## Overview
 
-The MCP server exposes 56 tools via the JSON-RPC 2.0 protocol, organized into 13 categories:
+The MCP server exposes 60 tools via the JSON-RPC 2.0 protocol, organized into 15 categories:
 
 | Category | Tools | Plan |
 |----------|-------|------|
@@ -45,7 +45,8 @@ The MCP server exposes 56 tools via the JSON-RPC 2.0 protocol, organized into 13
 | Text Input | `android_type_append_text`, `android_type_insert_text`, `android_type_replace_text`, `android_type_clear_text`, `android_press_key` | 9, 22 |
 | Utilities | `android_get_clipboard`, `android_set_clipboard`, `android_wait_for_node`, `android_wait_for_idle`, `android_get_node_details` | 9, 15 |
 | File Operations | `android_list_storage_locations`, `android_list_files`, `android_read_file`, `android_write_file`, `android_append_file`, `android_file_replace`, `android_download_from_url`, `android_delete_file` | - |
-| App Management | `android_open_app`, `android_list_apps`, `android_close_app` | - |
+| App Management | `android_open_app`, `android_list_apps`, `android_get_app_info`, `android_close_app` | - |
+| Usage & Screen Time | `android_get_usage_summary`, `android_get_app_usage`, `android_get_screen_time` | - |
 | Camera | `android_list_cameras`, `android_list_camera_photo_resolutions`, `android_list_camera_video_resolutions`, `android_take_camera_photo`, `android_save_camera_photo`, `android_save_camera_video` | 27 |
 | Intent | `android_send_intent`, `android_open_uri` | 31 |
 | Notification | `android_notification_list`, `android_notification_open`, `android_notification_dismiss`, `android_notification_snooze`, `android_notification_action`, `android_notification_reply` | 32 |
@@ -2420,7 +2421,7 @@ Lists installed applications. Can filter by type (all, user-installed, system) a
     "content": [
       {
         "type": "text",
-        "text": "[{\"package_id\":\"com.example.app\",\"name\":\"Example App\",\"version_name\":\"1.2.3\",\"version_code\":42,\"is_system\":false}]"
+        "text": "[{\"package_id\":\"com.example.app\",\"name\":\"Example App\",\"version_name\":\"1.2.3\",\"version_code\":42,\"is_system\":false,\"first_install_time_ms\":1700000000000,\"last_update_time_ms\":1710000000000,\"is_launchable\":true}]"
       }
     ]
   }
@@ -2435,6 +2436,12 @@ Lists installed applications. Can filter by type (all, user-installed, system) a
 **Error Cases** (returned as `CallToolResult(isError = true)`):
 - **Invalid params**: Invalid `filter` value (not one of `all`, `user`, `system`)
 - **Action failed**: Failed to query installed applications
+
+---
+
+### `android_get_app_info`
+
+Returns the same installation, version, system-app, timestamp, and launchability fields as `android_list_apps` for one exact `package_id`.
 
 ---
 
@@ -2485,6 +2492,20 @@ Kills a background application process.
 **Error Cases** (returned as `CallToolResult(isError = true)`):
 - **Invalid params**: Missing or empty `package_id`
 - **Action failed**: App not installed, failed to kill process
+
+---
+
+## 9a. Usage and Screen Time Tools
+
+These tools require the user to grant **Usage Access** in Android Special App Access. Values are reconstructed from Android `UsageEvents` and are approximate.
+
+All three tools accept `period`: `today` (default), `yesterday`, `last_7_days`, or `custom`. For `custom`, provide Unix epoch millisecond values in `start_time_ms` and `end_time_ms`; the maximum range is 31 days.
+
+- `android_get_usage_summary`: screen-interactive time, unlock count, and top apps. Optional `limit` is 1–50.
+- `android_get_app_usage`: foreground time, launch count, and last-use timestamp for required `package_id`.
+- `android_get_screen_time`: screen-interactive time and unlock count for the selected period.
+
+When Usage Access is missing or the Android user is locked, the tools return an actionable error and do not attempt to bypass the system setting.
 
 ---
 

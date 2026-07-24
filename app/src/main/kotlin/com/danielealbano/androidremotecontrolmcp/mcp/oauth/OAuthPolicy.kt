@@ -11,6 +11,10 @@ object OAuthPolicy {
     /** The fixed Claude.ai connector callback. */
     const val CLAUDE_REDIRECT_URI = "https://claude.ai/api/mcp/auth_callback"
 
+    /** ChatGPT assigns a per-connector callback suffix during dynamic client registration. */
+    private const val CHATGPT_REDIRECT_HOST = "chatgpt.com"
+    private val CHATGPT_REDIRECT_PATH = Regex("^/connector/oauth/[A-Za-z0-9_-]{1,128}$")
+
     /** Exact non-loopback redirect URIs accepted by the allowlist (add other hosted connectors here). */
     val ALLOWED_REDIRECT_URIS = setOf(CLAUDE_REDIRECT_URI)
 
@@ -40,15 +44,26 @@ object OAuthPolicy {
 
     /**
      * CLOSED-SET redirect allowlist (the security boundary). Returns true ONLY for a URI in
-     * [ALLOWED_REDIRECT_URIS], or `http://` loopback (`localhost` / `127.0.0.1` / `[::1]`, any/no port)
-     * for local test clients (MCP Inspector / mcp-remote / Claude Code). The host is compared via
-     * [URI.host] for EXACT equality — deceptive hosts (`localhost.evil.com`, `localhost@evil.com`),
-     * other loopback IPs, `0.0.0.0`, and any https non-allowlisted host are rejected.
+     * [ALLOWED_REDIRECT_URIS], a narrowly-shaped ChatGPT connector callback, or `http://` loopback
+     * (`localhost` / `127.0.0.1` / `[::1]`, any/no port) for local test clients (MCP Inspector /
+     * mcp-remote / Claude Code). Hosts are compared via [URI.host] for exact equality — deceptive
+     * hosts (`localhost.evil.com`, `localhost@evil.com`), other loopback IPs, `0.0.0.0`, and other
+     * HTTPS callbacks are rejected.
      */
     fun isAllowedRedirectUri(uri: String): Boolean {
         if (uri in ALLOWED_REDIRECT_URIS) return true
         val parsed = runCatching { URI(uri) }.getOrNull()
         val host = parsed?.host?.removePrefix("[")?.removeSuffix("]")
+        val isChatGptConnector =
+            parsed != null &&
+                parsed.scheme.equals("https", ignoreCase = true) &&
+                host.equals(CHATGPT_REDIRECT_HOST, ignoreCase = true) &&
+                parsed.port == -1 &&
+                parsed.rawUserInfo == null &&
+                parsed.rawQuery == null &&
+                parsed.rawFragment == null &&
+                CHATGPT_REDIRECT_PATH.matches(parsed.rawPath.orEmpty())
+        if (isChatGptConnector) return true
         return parsed != null && parsed.scheme == "http" && host in LOOPBACK_HOSTS
     }
 

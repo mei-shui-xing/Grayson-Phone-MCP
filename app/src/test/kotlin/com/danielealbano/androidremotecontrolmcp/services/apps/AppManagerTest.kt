@@ -1,15 +1,19 @@
 package com.danielealbano.androidremotecontrolmcp.services.apps
 
 import android.app.ActivityManager
+import android.app.ActivityOptions
+import android.app.PendingIntent
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.os.Bundle
 import android.util.Log
 import androidx.core.content.pm.PackageInfoCompat
 import com.danielealbano.androidremotecontrolmcp.data.model.AppFilter
+import com.danielealbano.androidremotecontrolmcp.services.accessibility.AccessibilityServiceProvider
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.impl.annotations.MockK
@@ -41,7 +45,13 @@ class AppManagerTest {
     @MockK
     private lateinit var mockActivityManager: ActivityManager
 
+    @MockK
+    private lateinit var mockAccessibilityServiceProvider: AccessibilityServiceProvider
+
     private lateinit var appManager: AppManagerImpl
+    private lateinit var mockPendingIntent: PendingIntent
+    private lateinit var mockActivityOptions: ActivityOptions
+    private lateinit var mockOptionsBundle: Bundle
 
     @BeforeEach
     fun setUp() {
@@ -54,17 +64,34 @@ class AppManagerTest {
         every { android.util.Log.e(any(), any(), any()) } returns 0
 
         mockkStatic(PackageInfoCompat::class)
+        mockkStatic(ActivityOptions::class)
+        mockkStatic(PendingIntent::class)
+
+        mockPendingIntent = mockk(relaxed = true)
+        mockActivityOptions = mockk(relaxed = true)
+        mockOptionsBundle = mockk(relaxed = true)
+        every { ActivityOptions.makeBasic() } returns mockActivityOptions
+        every { mockActivityOptions.toBundle() } returns mockOptionsBundle
+        every {
+            PendingIntent.getActivity(any(), any(), any(), any(), any())
+        } returns mockPendingIntent
+        every {
+            mockPendingIntent.send(any(), any(), any(), any(), any(), any(), any())
+        } just Runs
 
         every { mockContext.packageManager } returns mockPackageManager
         every { mockContext.getSystemService(any<String>()) } returns mockActivityManager
+        every { mockAccessibilityServiceProvider.getContext() } returns null
 
-        appManager = AppManagerImpl(mockContext)
+        appManager = AppManagerImpl(mockContext, mockAccessibilityServiceProvider)
     }
 
     @AfterEach
     fun tearDown() {
         unmockkStatic(android.util.Log::class)
         unmockkStatic(PackageInfoCompat::class)
+        unmockkStatic(ActivityOptions::class)
+        unmockkStatic(PendingIntent::class)
     }
 
     // ─── Helpers ─────────────────────────────────────────────────────────
@@ -238,7 +265,44 @@ class AppManagerTest {
                 // Assert
                 assertTrue(result.isSuccess)
                 verify { mockIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
-                verify { mockContext.startActivity(mockIntent) }
+                verify { mockIntent.addFlags(Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED) }
+                verify { mockIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP) }
+                verify {
+                    PendingIntent.getActivity(
+                        mockContext,
+                        "com.test.app".hashCode(),
+                        mockIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                        mockOptionsBundle,
+                    )
+                }
+                verify {
+                    mockPendingIntent.send(mockContext, 0, null, null, null, null, mockOptionsBundle)
+                }
+            }
+
+        @Test
+        fun `openApp uses accessibility service context when available`() =
+            runTest {
+                val mockIntent = mockk<Intent>(relaxed = true)
+                val accessibilityContext = mockk<Context>()
+                every { mockPackageManager.getLaunchIntentForPackage("com.test.app") } returns mockIntent
+                every { mockAccessibilityServiceProvider.getContext() } returns accessibilityContext
+                val result = appManager.openApp("com.test.app")
+
+                assertTrue(result.isSuccess)
+                verify {
+                    PendingIntent.getActivity(
+                        accessibilityContext,
+                        "com.test.app".hashCode(),
+                        mockIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                        mockOptionsBundle,
+                    )
+                }
+                verify {
+                    mockPendingIntent.send(accessibilityContext, 0, null, null, null, null, mockOptionsBundle)
+                }
             }
 
         @Test
@@ -269,7 +333,9 @@ class AppManagerTest {
                     mockPackageManager.getLaunchIntentForPackage("com.nonexistent.app")
                 } returns mockIntent
                 every { mockIntent.addFlags(any()) } returns mockIntent
-                every { mockContext.startActivity(any()) } throws ActivityNotFoundException("Activity not found")
+                every {
+                    PendingIntent.getActivity(any(), any(), any(), any(), any())
+                } throws ActivityNotFoundException("Activity not found")
 
                 // Act
                 val result = appManager.openApp("com.nonexistent.app")
@@ -288,7 +354,9 @@ class AppManagerTest {
                     mockPackageManager.getLaunchIntentForPackage("com.restricted.app")
                 } returns mockIntent
                 every { mockIntent.addFlags(any()) } returns mockIntent
-                every { mockContext.startActivity(any()) } throws SecurityException("Permission denied")
+                every {
+                    PendingIntent.getActivity(any(), any(), any(), any(), any())
+                } throws SecurityException("Permission denied")
 
                 // Act
                 val result = appManager.openApp("com.restricted.app")

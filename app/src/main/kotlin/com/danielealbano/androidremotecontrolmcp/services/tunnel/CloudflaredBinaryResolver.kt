@@ -10,4 +10,7 @@ package com.danielealbano.androidremotecontrolmcp.services.tunnel
 interface CloudflaredBinaryResolver {
     /** Returns the absolute path to the cloudflared binary, or null if not found. */
     fun resolve(): String?
+
+    /** Returns an Android VPN HTTP proxy suitable for Cloudflare edge CONNECTs, if present. */
+    fun edgeProxyAddress(): String? = null
 }

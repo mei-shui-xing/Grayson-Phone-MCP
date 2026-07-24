@@ -46,6 +46,8 @@ fun ServerStatusCard(
     onMcpStopClick: () -> Unit,
     onChannelStartClick: () -> Unit,
     onChannelStopClick: () -> Unit,
+    remoteControlEnabled: Boolean,
+    onRemoteControlToggle: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     ElevatedCard(
@@ -81,6 +83,36 @@ fun ServerStatusCard(
                 buttonText = if (channelEnabled) "Stop" else "Start",
                 buttonEnabled = true,
                 onButtonClick = if (channelEnabled) onChannelStopClick else onChannelStartClick,
+            )
+
+            Spacer(Modifier.height(8.dp))
+
+            ServiceRow(
+                label = stringResource(R.string.remote_control_status_label),
+                statusText =
+                    stringResource(
+                        if (remoteControlEnabled) {
+                            R.string.remote_control_status_enabled
+                        } else {
+                            R.string.remote_control_status_paused
+                        },
+                    ),
+                statusColor =
+                    if (remoteControlEnabled) {
+                        if (isSystemInDarkTheme()) Color(0xFF81C784) else Color(0xFF4CAF50)
+                    } else {
+                        if (isSystemInDarkTheme()) Color(0xFFFFD54F) else Color(0xFFFFC107)
+                    },
+                buttonText =
+                    stringResource(
+                        if (remoteControlEnabled) {
+                            R.string.notification_pause_remote_control
+                        } else {
+                            R.string.notification_resume_remote_control
+                        },
+                    ),
+                buttonEnabled = true,
+                onButtonClick = { onRemoteControlToggle(!remoteControlEnabled) },
             )
         }
     }
@@ -225,6 +257,8 @@ private fun ServerStatusCardStoppedPreview() {
             onMcpStopClick = {},
             onChannelStartClick = {},
             onChannelStopClick = {},
+            remoteControlEnabled = true,
+            onRemoteControlToggle = {},
         )
     }
 }

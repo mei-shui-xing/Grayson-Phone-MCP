@@ -8,7 +8,8 @@ The commands below require a device or emulator reachable over `adb` where the a
 
 Replace `<app-id>` with the application ID for your build:
 
-- **Debug**: `com.danielealbano.androidremotecontrolmcp.debug`
+- **GMS debug**: `com.danielealbano.androidremotecontrolmcp.gms.debug`
+- **FOSS debug**: `com.danielealbano.androidremotecontrolmcp.foss.debug`
 - **Release**: `com.danielealbano.androidremotecontrolmcp`
 
 > **Note**: the debug build adds the `.debug` suffix to the **application ID**, but the **class names do not change**. The Accessibility and Notification Listener component names below always use the unsuffixed class package (`com.danielealbano.androidremotecontrolmcp.services.*`), regardless of build type.
@@ -45,6 +46,12 @@ adb shell pm grant <app-id> android.permission.READ_MEDIA_VIDEO
 adb shell pm grant <app-id> android.permission.READ_MEDIA_AUDIO
 ```
 
+On OriginOS, vivo/iQOO devices add the dangerous runtime permission
+`com.android.permission.GET_INSTALLED_APPS` on top of Android's normal
+`QUERY_ALL_PACKAGES` permission. Grant it from the app's
+**Settings > Permissions > Installed App List (OriginOS)** row. The row is
+hidden on ROMs that do not define this vendor permission.
+
 ## Special access
 
 ### Accessibility Service
@@ -73,6 +80,10 @@ adb shell settings put secure enabled_notification_listeners \
   <app-id>/com.danielealbano.androidremotecontrolmcp.services.notifications.McpNotificationListenerService
 ```
 
+### Usage Access
+
+Required only for `get_usage_summary`, `get_app_usage`, and `get_screen_time`. On a production phone, open the app's **Settings > Permissions > App Usage & Screen Time** row and grant access in Android's Special App Access screen. Do not use ADB to bypass this user-controlled setting.
+
 ## One-shot script
 
 The following script grants every runtime permission and enables both special-access services. Set `APP_ID` to match your installed build.
@@ -82,7 +93,7 @@ The following script grants every runtime permission and enables both special-ac
 set -euo pipefail
 
 # Set to com.danielealbano.androidremotecontrolmcp for a release build
-APP_ID="com.danielealbano.androidremotecontrolmcp.debug"
+APP_ID="com.danielealbano.androidremotecontrolmcp.gms.debug"
 
 ACCESSIBILITY_SERVICE="$APP_ID/com.danielealbano.androidremotecontrolmcp.services.accessibility.McpAccessibilityService"
 NOTIFICATION_LISTENER="$APP_ID/com.danielealbano.androidremotecontrolmcp.services.notifications.McpNotificationListenerService"

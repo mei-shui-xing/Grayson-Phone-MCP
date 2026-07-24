@@ -6,7 +6,7 @@
         logs logs-clear \
         build-release-bundle \
         version-bump-patch version-bump-minor version-bump-major \
-        compile-cloudflared compile-ngrok-native check-so-alignment \
+        apply-cloudflared-patch compile-cloudflared compile-ngrok-native check-so-alignment \
         all ci
 
 # Variables
@@ -333,8 +333,24 @@ NDK_BIN := $(NDK_ROOT)/toolchains/llvm/prebuilt/$(shell uname -s | tr A-Z a-z)-$
 
 CLOUDFLARED_SRC_DIR := vendor/cloudflared
 CLOUDFLARED_JNILIBS_DIR := app/src/main/jniLibs
+CLOUDFLARED_PATCH := $(CURDIR)/patches/cloudflared-android-dns.patch
 
-compile-cloudflared: ## Cross-compile cloudflared for Android (requires Go + Android NDK)
+apply-cloudflared-patch: ## Apply the Android DNS fallback patch idempotently
+	@if [ ! -f "$(CLOUDFLARED_PATCH)" ]; then \
+		echo "ERROR: Missing cloudflared patch: $(CLOUDFLARED_PATCH)"; \
+		exit 1; \
+	fi
+	@if git -C "$(CLOUDFLARED_SRC_DIR)" apply --reverse --check "$(CLOUDFLARED_PATCH)" >/dev/null 2>&1; then \
+		echo "cloudflared Android DNS patch already applied."; \
+	elif git -C "$(CLOUDFLARED_SRC_DIR)" apply --check "$(CLOUDFLARED_PATCH)" >/dev/null 2>&1; then \
+		git -C "$(CLOUDFLARED_SRC_DIR)" apply "$(CLOUDFLARED_PATCH)"; \
+		echo "Applied cloudflared Android DNS patch."; \
+	else \
+		echo "ERROR: cloudflared patch does not apply cleanly. Reset the submodule to the pinned commit and retry."; \
+		exit 1; \
+	fi
+
+compile-cloudflared: apply-cloudflared-patch ## Cross-compile cloudflared for Android (requires Go + Android NDK)
 	@if [ ! -f "$(CLOUDFLARED_SRC_DIR)/cmd/cloudflared/main.go" ]; then \
 		echo "ERROR: cloudflared submodule not initialized."; \
 		echo "Run: git submodule update --init vendor/cloudflared"; \

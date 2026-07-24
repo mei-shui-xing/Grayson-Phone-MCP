@@ -3,6 +3,7 @@ package com.danielealbano.androidremotecontrolmcp.integration
 import com.danielealbano.androidremotecontrolmcp.data.model.AppFilter
 import com.danielealbano.androidremotecontrolmcp.data.model.AppInfo
 import io.mockk.coEvery
+import io.mockk.every
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.AfterEach
@@ -29,7 +30,19 @@ class AppManagementToolsIntegrationTest {
     fun `open_app with valid package_id launches app successfully`() =
         runTest {
             val deps = McpIntegrationTestHelper.createMockDependencies()
+            val app =
+                AppInfo(
+                    packageId = "com.test.app",
+                    name = "Test App",
+                    versionName = "1.0.0",
+                    versionCode = 1L,
+                    isSystemApp = false,
+                    isLaunchable = true,
+                )
+            coEvery { deps.appManager.listInstalledApps(AppFilter.ALL, null) } returns listOf(app)
             coEvery { deps.appManager.openApp("com.test.app") } returns Result.success(Unit)
+            every { deps.accessibilityServiceProvider.getCurrentPackageName() } returnsMany
+                listOf(null, "com.test.app")
 
             McpIntegrationTestHelper.withTestApplication(deps) { client, _ ->
                 val result =
@@ -39,7 +52,7 @@ class AppManagementToolsIntegrationTest {
                     )
                 assertNotEquals(true, result.isError)
                 val text = (result.content[0] as TextContent).text
-                assertTrue(text.contains("launched successfully"))
+                assertTrue(text.contains("opened successfully"))
             }
         }
 
@@ -47,9 +60,7 @@ class AppManagementToolsIntegrationTest {
     fun `open_app with unknown package_id returns error`() =
         runTest {
             val deps = McpIntegrationTestHelper.createMockDependencies()
-            coEvery {
-                deps.appManager.openApp("com.unknown")
-            } returns Result.failure(IllegalArgumentException("No launchable activity"))
+            coEvery { deps.appManager.listInstalledApps(AppFilter.ALL, null) } returns emptyList()
 
             McpIntegrationTestHelper.withTestApplication(deps) { client, _ ->
                 val result =
@@ -59,7 +70,7 @@ class AppManagementToolsIntegrationTest {
                     )
                 assertEquals(true, result.isError)
                 val text = (result.content[0] as TextContent).text
-                assertTrue(text.contains("Failed to open"))
+                assertTrue(text.contains("not installed or not visible"))
             }
         }
 

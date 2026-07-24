@@ -1,0 +1,563 @@
+diff --git a/connection/http2.go b/connection/http2.go
+index c7e14c67..789f072f 100644
+--- a/connection/http2.go
++++ b/connection/http2.go
+@@ -11,6 +11,7 @@ import (
+ 	"runtime/debug"
+ 	"strings"
+ 	"sync"
++	"time"
+ 
+ 	"github.com/pkg/errors"
+ 	"github.com/rs/zerolog"
+@@ -64,6 +65,11 @@ func NewHTTP2Connection(
+ 		conn: conn,
+ 		server: &http2.Server{
+ 			MaxConcurrentStreams: MaxConcurrentStreams,
++			// Android global-mode VPN HTTP proxies may close CONNECT tunnels after
++			// roughly 30 seconds without application data. Periodic HTTP/2 PINGs
++			// keep the edge connection alive through those proxies.
++			ReadIdleTimeout: 10 * time.Second,
++			PingTimeout:     5 * time.Second,
+ 		},
+ 		orchestrator:         orchestrator,
+ 		connOptions:          connOptions,
+diff --git a/edgediscovery/allregions/discovery.go b/edgediscovery/allregions/discovery.go
+index cab06611..a550eccf 100644
+--- a/edgediscovery/allregions/discovery.go
++++ b/edgediscovery/allregions/discovery.go
+@@ -3,8 +3,14 @@ package allregions
+ import (
+ 	"context"
+ 	"crypto/tls"
++	"encoding/json"
+ 	"fmt"
+ 	"net"
++	"net/http"
++	"net/url"
++	"runtime"
++	"strconv"
++	"strings"
+ 	"time"
+ 
+ 	"github.com/pkg/errors"
+@@ -21,9 +27,9 @@ const (
+ 
+ 	// Used to fallback to DoT when we can't use the default resolver to
+ 	// discover HA origintunneld servers (GitHub issue #75).
+-	dotServerName = "cloudflare-dns.com"
+-	dotServerAddr = "1.1.1.1:853"
+ 	dotTimeout    = 15 * time.Second
++	udpDNSTimeout = 5 * time.Second
++	udpDNSAddress = "223.5.5.5:53"
+ 
+ 	logFieldAddress = "address"
+ )
+@@ -96,7 +102,47 @@ type EdgeAddr struct {
+ //
+ // Does this matter? I don't know. It may someday. Let's use DoT so we don't need to worry about it.
+ // See also: Go feature request for stdlib-supported DoH: https://github.com/golang/go/issues/27552
+-var fallbackLookupSRV = lookupSRVWithDOT
++var fallbackLookupSRV = lookupSRVWithFallback
++var fallbackLookupIP = lookupIPWithFallback
++
++type dotEndpoint struct {
++	serverName string
++	address    string
++}
++
++// Android does not provide /etc/resolv.conf to ordinary app processes. Go's
++// built-in resolver consequently falls back to localhost:53, where no DNS
++// server is listening. Use encrypted public resolvers with literal bootstrap
++// addresses so edge discovery also works from an Android app sandbox.
++var dotEndpoints = []dotEndpoint{
++	{serverName: "dns.alidns.com", address: "223.5.5.5:853"},
++	{serverName: "cloudflare-dns.com", address: "1.1.1.1:853"},
++}
++
++type dohEndpoint struct {
++	serverName string
++	url        string
++}
++
++// Some Android VPNs block DNS-over-TLS on port 853 while allowing ordinary
++// HTTPS. In the Android app, cloudflared is launched with netdns=cgo so these
++// hostnames resolve through Android's VPN-aware libc resolver. This is
++// important for global-mode VPNs that reject direct connections to literal
++// bootstrap IPs but proxy domain traffic through their fake-IP DNS mapping.
++var dohEndpoints = []dohEndpoint{
++	{serverName: "dns.alidns.com", url: "https://dns.alidns.com/resolve"},
++	{serverName: "cloudflare-dns.com", url: "https://cloudflare-dns.com/dns-query"},
++}
++
++type dohResponse struct {
++	Status int         `json:"Status"`
++	Answer []dohAnswer `json:"Answer"`
++}
++
++type dohAnswer struct {
++	Type uint16 `json:"type"`
++	Data string `json:"data"`
++}
+ 
+ var friendlyDNSErrorLines = []string{
+ 	`Please try the following things to diagnose this issue:`,
+@@ -108,6 +154,15 @@ var friendlyDNSErrorLines = []string{
+ 	`     https://developers.cloudflare.com/1.1.1.1/setting-up-1.1.1.1/`,
+ }
+ 
++// Cloudflare's two stable tunnel edge address pools. Android's app sandbox has
++// no resolv.conf, and some global-mode VPN profiles cannot forward SRV queries
++// at all. Literal targets let the tunnel recover without DNS; connection
++// rotation still happens across both independent edge regions.
++var androidEdgeFallbackIPs = [][]string{
++	{"198.41.192.37", "198.41.192.77", "198.41.192.167"},
++	{"198.41.200.13", "198.41.200.73", "198.41.200.193"},
++}
++
+ // EdgeDiscovery implements HA service discovery lookup.
+ func edgeDiscovery(log *zerolog.Logger, srvService string) ([][]*EdgeAddr, error) {
+ 	logger := log.With().Int(management.EventTypeKey, int(management.Cloudflared)).Logger()
+@@ -118,17 +173,24 @@ func edgeDiscovery(log *zerolog.Logger, srvService string) ([][]*EdgeAddr, error
+ 
+ 	_, addrs, err := netLookupSRV(srvService, srvProto, srvName)
+ 	if err != nil {
+-		_, fallbackAddrs, fallbackErr := fallbackLookupSRV(srvService, srvProto, srvName)
+-		if fallbackErr != nil || len(fallbackAddrs) == 0 {
+-			// use the original DNS error `err` in messages, not `fallbackErr`
+-			logger.Err(err).Msg("edge discovery: error looking up Cloudflare edge IPs: the DNS query failed")
+-			for _, s := range friendlyDNSErrorLines {
+-				logger.Error().Msg(s)
++		if runtime.GOOS == "android" {
++			logger.Warn().
++				Err(err).
++				Msg("edge discovery: Android DNS unavailable; using bundled Cloudflare edge addresses")
++			return androidFallbackEdgeAddrs(), nil
++		} else {
++			_, fallbackAddrs, fallbackErr := fallbackLookupSRV(srvService, srvProto, srvName)
++			if fallbackErr != nil || len(fallbackAddrs) == 0 {
++				// use the original DNS error `err` in messages, not `fallbackErr`
++				logger.Err(err).Msg("edge discovery: error looking up Cloudflare edge IPs: the DNS query failed")
++				for _, s := range friendlyDNSErrorLines {
++					logger.Error().Msg(s)
++				}
++				return nil, errors.Wrapf(err, "Could not lookup srv records on _%v._%v.%v", srvService, srvProto, srvName)
+ 			}
+-			return nil, errors.Wrapf(err, "Could not lookup srv records on _%v._%v.%v", srvService, srvProto, srvName)
++			// Accept the fallback results and keep going
++			addrs = fallbackAddrs
+ 		}
+-		// Accept the fallback results and keep going
+-		addrs = fallbackAddrs
+ 	}
+ 
+ 	var resolvedAddrPerCNAME [][]*EdgeAddr
+@@ -150,29 +212,255 @@ func edgeDiscovery(log *zerolog.Logger, srvService string) ([][]*EdgeAddr, error
+ 	return resolvedAddrPerCNAME, nil
+ }
+ 
++func androidFallbackEdgeAddrs() [][]*EdgeAddr {
++	regions := make([][]*EdgeAddr, 0, len(androidEdgeFallbackIPs))
++	for _, regionIPs := range androidEdgeFallbackIPs {
++		region := make([]*EdgeAddr, 0, len(regionIPs))
++		for _, rawIP := range regionIPs {
++			ip := net.ParseIP(rawIP)
++			region = append(region, &EdgeAddr{
++				TCP:       &net.TCPAddr{IP: ip, Port: 7844},
++				UDP:       &net.UDPAddr{IP: ip, Port: 7844},
++				IPVersion: V4,
++			})
++		}
++		regions = append(regions, region)
++	}
++	return regions
++}
++
+ func lookupSRVWithDOT(srvService string, srvProto string, srvName string) (cname string, addrs []*net.SRV, err error) {
++	resolver := newDOTResolver()
++	ctx, cancel := context.WithTimeout(context.Background(), dotTimeout)
++	defer cancel()
++	return resolver.LookupSRV(ctx, srvService, srvProto, srvName)
++}
++
++func lookupSRVWithFallback(srvService string, srvProto string, srvName string) (string, []*net.SRV, error) {
++	queryName := "_" + srvService + "._" + srvProto + "." + srvName
++	answers, dohErr := lookupWithDOH(queryName, "SRV")
++	if dohErr == nil {
++		if addrs, err := parseDOHSRVAnswers(answers); err == nil && len(addrs) > 0 {
++			return "", addrs, nil
++		}
++	}
++
++	// Android VPN clients commonly hijack ordinary UDP/53 and answer it from
++	// their TUN DNS gateway. Try that path first: unlike direct DoT/DoH
++	// bootstrap IPs, it continues to work when the VPN rejects direct TCP
++	// connections while operating in global mode.
++	cname, addrs, udpErr := lookupSRVWithUDPDNS(srvService, srvProto, srvName)
++	if udpErr == nil && len(addrs) > 0 {
++		return cname, addrs, nil
++	}
++
++	cname, addrs, dotErr := lookupSRVWithDOT(srvService, srvProto, srvName)
++	if dotErr == nil && len(addrs) > 0 {
++		return cname, addrs, nil
++	}
++	return "", nil, errors.Wrapf(dotErr, "DoH failed (%v), UDP DNS failed (%v), and DoT failed", dohErr, udpErr)
++}
++
++func lookupIPWithDOT(host string) ([]net.IP, error) {
++	resolver := newDOTResolver()
++	ctx, cancel := context.WithTimeout(context.Background(), dotTimeout)
++	defer cancel()
++	return resolver.LookupIP(ctx, "ip", host)
++}
++
++func lookupIPWithFallback(host string) ([]net.IP, error) {
++	var answers []dohAnswer
++	var dohErr error
++	for _, recordType := range []string{"A", "AAAA"} {
++		resolved, err := lookupWithDOH(host, recordType)
++		if err != nil {
++			dohErr = err
++			continue
++		}
++		answers = append(answers, resolved...)
++	}
++	if ips := parseDOHIPAnswers(answers); len(ips) > 0 {
++		return ips, nil
++	}
++
++	ips, udpErr := lookupIPWithUDPDNS(host)
++	if udpErr == nil && len(ips) > 0 {
++		return ips, nil
++	}
++
++	ips, dotErr := lookupIPWithDOT(host)
++	if dotErr == nil && len(ips) > 0 {
++		return ips, nil
++	}
++	var lastErr error
++	ips = parseDOHIPAnswers(answers)
++	if len(ips) == 0 {
++		if lastErr == nil {
++			lastErr = fmt.Errorf("DoH returned no IP addresses")
++		}
++		return nil, errors.Wrapf(lastErr, "DoH failed (%v), UDP DNS failed (%v), and DoT failed (%v)", dohErr, udpErr, dotErr)
++	}
++	return ips, nil
++}
++
++func lookupSRVWithUDPDNS(srvService string, srvProto string, srvName string) (string, []*net.SRV, error) {
++	resolver := newUDPDNSResolver()
++	ctx, cancel := context.WithTimeout(context.Background(), udpDNSTimeout)
++	defer cancel()
++	return resolver.LookupSRV(ctx, srvService, srvProto, srvName)
++}
++
++func lookupIPWithUDPDNS(host string) ([]net.IP, error) {
++	resolver := newUDPDNSResolver()
++	ctx, cancel := context.WithTimeout(context.Background(), udpDNSTimeout)
++	defer cancel()
++	return resolver.LookupIP(ctx, "ip", host)
++}
++
++func newUDPDNSResolver() *net.Resolver {
++	return &net.Resolver{
++		PreferGo: true,
++		Dial: func(ctx context.Context, network string, _ string) (net.Conn, error) {
++			var dialer net.Dialer
++			return dialer.DialContext(ctx, network, udpDNSAddress)
++		},
++	}
++}
++
++func lookupWithDOH(name string, recordType string) ([]dohAnswer, error) {
++	var lastErr error
++	for _, endpoint := range dohEndpoints {
++		answers, err := queryDOHEndpoint(endpoint, name, recordType)
++		if err == nil && len(answers) > 0 {
++			return answers, nil
++		}
++		if err != nil {
++			lastErr = err
++		}
++	}
++	if lastErr == nil {
++		lastErr = fmt.Errorf("empty DoH response for %s %s", name, recordType)
++	}
++	return nil, lastErr
++}
++
++func queryDOHEndpoint(endpoint dohEndpoint, name string, recordType string) ([]dohAnswer, error) {
++	transport := &http.Transport{
++		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
++			ips, err := platformLookupIPs(endpoint.serverName)
++			if err != nil {
++				return nil, err
++			}
++			var lastErr error
++			var dialer net.Dialer
++			for _, ip := range ips {
++				conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(ip.String(), "443"))
++				if err == nil {
++					return conn, nil
++				}
++				lastErr = err
++			}
++			return nil, lastErr
++		},
++		TLSClientConfig: &tls.Config{ServerName: endpoint.serverName, MinVersion: tls.VersionTLS12},
++	}
++	defer transport.CloseIdleConnections()
++	client := &http.Client{Transport: transport, Timeout: dotTimeout}
++	requestURL := endpoint.url + "?name=" + url.QueryEscape(name) + "&type=" + url.QueryEscape(recordType)
++	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, requestURL, nil)
++	if err != nil {
++		return nil, err
++	}
++	req.Header.Set("Accept", "application/dns-json")
++	resp, err := client.Do(req)
++	if err != nil {
++		return nil, err
++	}
++	defer resp.Body.Close()
++	if resp.StatusCode != http.StatusOK {
++		return nil, fmt.Errorf("DoH endpoint returned HTTP %d", resp.StatusCode)
++	}
++	var payload dohResponse
++	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
++		return nil, err
++	}
++	if payload.Status != 0 {
++		return nil, fmt.Errorf("DoH endpoint returned DNS status %d", payload.Status)
++	}
++	return payload.Answer, nil
++}
++
++func parseDOHSRVAnswers(answers []dohAnswer) ([]*net.SRV, error) {
++	var records []*net.SRV
++	for _, answer := range answers {
++		if answer.Type != 33 {
++			continue
++		}
++		fields := strings.Fields(answer.Data)
++		if len(fields) != 4 {
++			continue
++		}
++		priority, errPriority := strconv.ParseUint(fields[0], 10, 16)
++		weight, errWeight := strconv.ParseUint(fields[1], 10, 16)
++		port, errPort := strconv.ParseUint(fields[2], 10, 16)
++		if errPriority != nil || errWeight != nil || errPort != nil {
++			continue
++		}
++		records = append(records, &net.SRV{
++			Target:   strings.TrimSuffix(fields[3], "."),
++			Port:     uint16(port),
++			Priority: uint16(priority),
++			Weight:   uint16(weight),
++		})
++	}
++	if len(records) == 0 {
++		return nil, fmt.Errorf("DoH returned no usable SRV records")
++	}
++	return records, nil
++}
++
++func parseDOHIPAnswers(answers []dohAnswer) []net.IP {
++	var ips []net.IP
++	for _, answer := range answers {
++		if answer.Type != 1 && answer.Type != 28 {
++			continue
++		}
++		if ip := net.ParseIP(strings.TrimSpace(answer.Data)); ip != nil {
++			ips = append(ips, ip)
++		}
++	}
++	return ips
++}
++
++func newDOTResolver() *net.Resolver {
+ 	// Inspiration: https://github.com/artyom/dot/blob/master/dot.go
+ 	r := &net.Resolver{
+ 		PreferGo: true,
+ 		Dial: func(ctx context.Context, _ string, _ string) (net.Conn, error) {
+ 			var dialer net.Dialer
+-			conn, err := dialer.DialContext(ctx, "tcp", dotServerAddr)
+-			if err != nil {
+-				return nil, err
++			var lastErr error
++			for _, endpoint := range dotEndpoints {
++				conn, err := dialer.DialContext(ctx, "tcp", endpoint.address)
++				if err != nil {
++					lastErr = err
++					continue
++				}
++				tlsConfig := &tls.Config{ServerName: endpoint.serverName}
++				return tls.Client(conn, tlsConfig), nil
+ 			}
+-			tlsConfig := &tls.Config{ServerName: dotServerName}
+-			return tls.Client(conn, tlsConfig), nil
++			return nil, lastErr
+ 		},
+ 	}
+-	ctx, cancel := context.WithTimeout(context.Background(), dotTimeout)
+-	defer cancel()
+-	return r.LookupSRV(ctx, srvService, srvProto, srvName)
++	return r
+ }
+ 
+ func resolveSRV(srv *net.SRV) ([]*EdgeAddr, error) {
+ 	ips, err := netLookupIP(srv.Target)
+ 	if err != nil {
+-		return nil, errors.Wrapf(err, "Couldn't resolve SRV record %v", srv)
++		ips, err = fallbackLookupIP(srv.Target)
++		if err != nil {
++			return nil, errors.Wrapf(err, "Couldn't resolve SRV record %v", srv)
++		}
+ 	}
+ 	if len(ips) == 0 {
+ 		return nil, fmt.Errorf("SRV record %v had no IPs", srv)
+diff --git a/edgediscovery/allregions/resolver_android.go b/edgediscovery/allregions/resolver_android.go
+new file mode 100644
+index 00000000..2c7a5bb4
+--- /dev/null
++++ b/edgediscovery/allregions/resolver_android.go
+@@ -0,0 +1,62 @@
++//go:build android && cgo
++
++package allregions
++
++/*
++#include <arpa/inet.h>
++#include <netdb.h>
++#include <stdlib.h>
++#include <string.h>
++
++static int android_lookup_host(const char *host, char *output, size_t output_len) {
++    struct addrinfo hints;
++    struct addrinfo *result = NULL;
++    memset(&hints, 0, sizeof(hints));
++    hints.ai_family = AF_UNSPEC;
++    hints.ai_socktype = SOCK_STREAM;
++
++    int status = getaddrinfo(host, NULL, &hints, &result);
++    if (status != 0 || result == NULL) {
++        return status == 0 ? EAI_NONAME : status;
++    }
++
++    int found = EAI_NONAME;
++    for (struct addrinfo *entry = result; entry != NULL; entry = entry->ai_next) {
++        void *address = NULL;
++        if (entry->ai_family == AF_INET) {
++            address = &((struct sockaddr_in *)entry->ai_addr)->sin_addr;
++        } else if (entry->ai_family == AF_INET6) {
++            address = &((struct sockaddr_in6 *)entry->ai_addr)->sin6_addr;
++        }
++        if (address != NULL && inet_ntop(entry->ai_family, address, output, output_len) != NULL) {
++            found = 0;
++            break;
++        }
++    }
++    freeaddrinfo(result);
++    return found;
++}
++*/
++import "C"
++
++import (
++	"fmt"
++	"net"
++	"unsafe"
++)
++
++func platformLookupIPs(host string) ([]net.IP, error) {
++	cHost := C.CString(host)
++	defer C.free(unsafe.Pointer(cHost))
++
++	buffer := make([]byte, 64)
++	status := C.android_lookup_host(cHost, (*C.char)(unsafe.Pointer(&buffer[0])), C.size_t(len(buffer)))
++	if status != 0 {
++		return nil, fmt.Errorf("Android libc resolver failed with status %d", int(status))
++	}
++	ip := net.ParseIP(C.GoString((*C.char)(unsafe.Pointer(&buffer[0]))))
++	if ip == nil {
++		return nil, fmt.Errorf("Android libc resolver returned an invalid address")
++	}
++	return []net.IP{ip}, nil
++}
+diff --git a/edgediscovery/allregions/resolver_generic.go b/edgediscovery/allregions/resolver_generic.go
+new file mode 100644
+index 00000000..1529d04f
+--- /dev/null
++++ b/edgediscovery/allregions/resolver_generic.go
+@@ -0,0 +1,9 @@
++//go:build !android || !cgo
++
++package allregions
++
++import "net"
++
++func platformLookupIPs(host string) ([]net.IP, error) {
++	return net.LookupIP(host)
++}
+diff --git a/edgediscovery/dial.go b/edgediscovery/dial.go
+index 1bbf59c3..12cd096c 100644
+--- a/edgediscovery/dial.go
++++ b/edgediscovery/dial.go
+@@ -1,9 +1,13 @@
+ package edgediscovery
+ 
+ import (
++	"bufio"
+ 	"context"
+ 	"crypto/tls"
++	"fmt"
+ 	"net"
++	"net/http"
++	"os"
+ 	"time"
+ 
+ 	"github.com/pkg/errors"
+@@ -25,7 +29,7 @@ func DialEdge(
+ 	if localIP != nil {
+ 		dialer.LocalAddr = &net.TCPAddr{IP: localIP, Port: 0}
+ 	}
+-	edgeConn, err := dialer.DialContext(dialCtx, "tcp", edgeTCPAddr.String())
++	edgeConn, err := dialEdgeTCP(dialCtx, &dialer, edgeTCPAddr.String())
+ 	if err != nil {
+ 		return nil, newDialError(err, "DialContext error")
+ 	}
+@@ -41,6 +45,33 @@ func DialEdge(
+ 	return tlsEdgeConn, nil
+ }
+ 
++func dialEdgeTCP(ctx context.Context, dialer *net.Dialer, target string) (net.Conn, error) {
++	proxyAddress := os.Getenv("CLOUDFLARED_EDGE_PROXY")
++	if proxyAddress == "" {
++		return dialer.DialContext(ctx, "tcp", target)
++	}
++
++	conn, err := dialer.DialContext(ctx, "tcp", proxyAddress)
++	if err != nil {
++		return nil, errors.Wrap(err, "dial Android VPN proxy")
++	}
++	if _, err := fmt.Fprintf(conn, "CONNECT %s HTTP/1.1\r\nHost: %s\r\nProxy-Connection: Keep-Alive\r\n\r\n", target, target); err != nil {
++		conn.Close()
++		return nil, errors.Wrap(err, "write HTTP CONNECT request")
++	}
++	response, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: http.MethodConnect})
++	if err != nil {
++		conn.Close()
++		return nil, errors.Wrap(err, "read HTTP CONNECT response")
++	}
++	if response.StatusCode != http.StatusOK {
++		response.Body.Close()
++		conn.Close()
++		return nil, fmt.Errorf("Android VPN proxy CONNECT returned %s", response.Status)
++	}
++	return conn, nil
++}
++
+ // DialError is an error returned from DialEdge
+ type DialError struct {
+ 	cause error

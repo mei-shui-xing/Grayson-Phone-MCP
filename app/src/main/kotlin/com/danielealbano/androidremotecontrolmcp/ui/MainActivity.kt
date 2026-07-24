@@ -17,6 +17,7 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
     private lateinit var notificationPermissionLauncher: ActivityResultLauncher<String>
+    private lateinit var installedAppsPermissionLauncher: ActivityResultLauncher<String>
     private lateinit var cameraPermissionLauncher: ActivityResultLauncher<String>
     private lateinit var microphonePermissionLauncher: ActivityResultLauncher<String>
     private lateinit var locationPermissionLauncher: ActivityResultLauncher<String>
@@ -26,6 +27,13 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         notificationPermissionLauncher =
+            registerForActivityResult(
+                ActivityResultContracts.RequestPermission(),
+            ) { _ ->
+                viewModel.refreshPermissionStatus(this)
+            }
+
+        installedAppsPermissionLauncher =
             registerForActivityResult(
                 ActivityResultContracts.RequestPermission(),
             ) { _ ->
@@ -57,6 +65,7 @@ class MainActivity : ComponentActivity() {
             AndroidRemoteControlMcpTheme {
                 MainScreen(
                     onRequestNotificationPermission = ::requestNotificationPermission,
+                    onRequestInstalledAppsPermission = ::requestInstalledAppsPermission,
                     onRequestCameraPermission = ::requestCameraPermission,
                     onRequestMicrophonePermission = ::requestMicrophonePermission,
                     onRequestLocationPermission = ::requestLocationPermission,
@@ -77,6 +86,13 @@ class MainActivity : ComponentActivity() {
      */
     private fun requestNotificationPermission() {
         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    private fun requestInstalledAppsPermission() {
+        installedAppsPermissionLauncher.launch(
+            com.danielealbano.androidremotecontrolmcp.utils.PermissionUtils
+                .ORIGIN_OS_GET_INSTALLED_APPS_PERMISSION,
+        )
     }
 
     /**

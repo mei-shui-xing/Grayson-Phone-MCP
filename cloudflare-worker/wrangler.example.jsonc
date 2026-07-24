@@ -1,0 +1,20 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "your-phone-mcp",
+  "main": "worker.js",
+  "compatibility_date": "2026-07-22",
+  "account_id": "YOUR_CLOUDFLARE_ACCOUNT_ID",
+  "preview_urls": false,
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true
+    }
+  },
+  "vpc_networks": [
+    {
+      "binding": "PHONE_MCP",
+      "tunnel_id": "YOUR_NAMED_TUNNEL_ID"
+    }
+  ]
+}

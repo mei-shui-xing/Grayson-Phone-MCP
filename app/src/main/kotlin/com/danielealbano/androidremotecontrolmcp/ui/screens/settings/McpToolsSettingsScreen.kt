@@ -133,8 +133,26 @@ private val ALL_TOOL_CATEGORIES: List<ToolCategory> =
             "App Management",
             listOf(
                 ToolEntry("open_app", "Open App"),
+                ToolEntry("open_app_by_name", "Open App by Name"),
                 ToolEntry("list_apps", "List Apps"),
+                ToolEntry("get_app_info", "Get App Info"),
                 ToolEntry("close_app", "Close App"),
+            ),
+        ),
+        ToolCategory(
+            "Alarms & Timers",
+            listOf(
+                ToolEntry("set_alarm", "Set Alarm"),
+                ToolEntry("set_timer", "Set Timer"),
+                ToolEntry("show_alarms", "Show Alarms"),
+            ),
+        ),
+        ToolCategory(
+            "Usage & Screen Time",
+            listOf(
+                ToolEntry("get_usage_summary", "Get Usage Summary"),
+                ToolEntry("get_app_usage", "Get App Usage"),
+                ToolEntry("get_screen_time", "Get Screen Time"),
             ),
         ),
         ToolCategory(

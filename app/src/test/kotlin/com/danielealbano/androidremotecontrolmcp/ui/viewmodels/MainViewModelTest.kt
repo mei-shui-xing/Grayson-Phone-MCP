@@ -15,6 +15,7 @@ import com.danielealbano.androidremotecontrolmcp.data.model.TunnelEndpoint
 import com.danielealbano.androidremotecontrolmcp.data.model.TunnelProviderType
 import com.danielealbano.androidremotecontrolmcp.data.model.TunnelStatus
 import com.danielealbano.androidremotecontrolmcp.data.repository.SettingsRepository
+import com.danielealbano.androidremotecontrolmcp.services.safety.RemoteControlGate
 import com.danielealbano.androidremotecontrolmcp.services.storage.StorageLocationProvider
 import com.danielealbano.androidremotecontrolmcp.services.tunnel.TunnelManager
 import com.danielealbano.androidremotecontrolmcp.utils.PermissionUtils
@@ -53,6 +54,7 @@ class MainViewModelTest {
     private lateinit var settingsRepository: SettingsRepository
     private lateinit var tunnelManager: TunnelManager
     private lateinit var storageLocationProvider: StorageLocationProvider
+    private lateinit var remoteControlGate: RemoteControlGate
     private lateinit var configFlow: MutableStateFlow<ServerConfig>
     private lateinit var tunnelStatusFlow: MutableStateFlow<TunnelStatus>
     private lateinit var viewModel: MainViewModel
@@ -91,8 +93,10 @@ class MainViewModelTest {
         every { tunnelManager.tunnelStatus } returns tunnelStatusFlow
 
         storageLocationProvider = mockk(relaxed = true)
+        remoteControlGate = mockk(relaxed = true)
+        every { remoteControlGate.enabled } returns MutableStateFlow(true)
 
-        viewModel = MainViewModel(settingsRepository, tunnelManager, storageLocationProvider, testDispatcher)
+        viewModel = MainViewModel(settingsRepository, tunnelManager, storageLocationProvider, remoteControlGate, testDispatcher)
     }
 
     @AfterEach
@@ -439,7 +443,14 @@ class MainViewModelTest {
                     ngrokAuthtoken = "my-authtoken",
                     ngrokDomain = "my.ngrok.app",
                 )
-            viewModel = MainViewModel(settingsRepository, tunnelManager, storageLocationProvider, testDispatcher)
+            viewModel =
+                MainViewModel(
+                    settingsRepository,
+                    tunnelManager,
+                    storageLocationProvider,
+                    remoteControlGate,
+                    testDispatcher,
+                )
             advanceUntilIdle()
 
             assertEquals("my-authtoken", viewModel.ngrokAuthtokenInput.value)
@@ -473,7 +484,14 @@ class MainViewModelTest {
     fun `serverConfig collection sets cloudflare token input`() =
         runTest {
             configFlow.value = configFlow.value.copy(cloudflareTunnelToken = "seeded-token")
-            viewModel = MainViewModel(settingsRepository, tunnelManager, storageLocationProvider, testDispatcher)
+            viewModel =
+                MainViewModel(
+                    settingsRepository,
+                    tunnelManager,
+                    storageLocationProvider,
+                    remoteControlGate,
+                    testDispatcher,
+                )
             advanceUntilIdle()
 
             assertEquals("seeded-token", viewModel.cloudflareTokenInput.value)
@@ -1028,7 +1046,14 @@ class MainViewModelTest {
         runTest {
             // Set deviceSlug BEFORE creating ViewModel so initial load picks it up
             configFlow.value = configFlow.value.copy(deviceSlug = "test_device")
-            viewModel = MainViewModel(settingsRepository, tunnelManager, storageLocationProvider, testDispatcher)
+            viewModel =
+                MainViewModel(
+                    settingsRepository,
+                    tunnelManager,
+                    storageLocationProvider,
+                    remoteControlGate,
+                    testDispatcher,
+                )
             advanceUntilIdle()
 
             assertEquals("test_device", viewModel.deviceSlugInput.value)

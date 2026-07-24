@@ -63,19 +63,21 @@ fun ServerScreen(
     val serverStatus by viewModel.serverStatus.collectAsStateWithLifecycle()
     val serverLogs by viewModel.serverLogs.collectAsStateWithLifecycle()
     val tunnelStatus by viewModel.tunnelStatus.collectAsStateWithLifecycle()
+    val isRemoteControlEnabled by viewModel.isRemoteControlEnabled.collectAsStateWithLifecycle()
 
     val isAccessibilityEnabled by viewModel.isAccessibilityEnabled.collectAsStateWithLifecycle()
     val isNotificationPermissionGranted by viewModel.isNotificationPermissionGranted.collectAsStateWithLifecycle()
-    val isCameraPermissionGranted by viewModel.isCameraPermissionGranted.collectAsStateWithLifecycle()
-    val isMicrophonePermissionGranted by viewModel.isMicrophonePermissionGranted.collectAsStateWithLifecycle()
-    val isNotificationListenerEnabled by viewModel.isNotificationListenerEnabled.collectAsStateWithLifecycle()
+    val isInstalledAppsPermissionSupported by
+        viewModel.isInstalledAppsPermissionSupported.collectAsStateWithLifecycle()
+    val isInstalledAppsPermissionGranted by
+        viewModel.isInstalledAppsPermissionGranted.collectAsStateWithLifecycle()
+    val isUsageAccessGranted by viewModel.isUsageAccessGranted.collectAsStateWithLifecycle()
 
-    val hasAllPermissions =
+    val hasRequiredPermissions =
         isAccessibilityEnabled &&
             isNotificationPermissionGranted &&
-            isCameraPermissionGranted &&
-            isMicrophonePermissionGranted &&
-            isNotificationListenerEnabled
+            isUsageAccessGranted &&
+            (!isInstalledAppsPermissionSupported || isInstalledAppsPermissionGranted)
 
     val channelConfig by channelViewModel.eventChannelConfig.collectAsStateWithLifecycle()
     val channelStatus by channelViewModel.channelConnectionStatus.collectAsStateWithLifecycle()
@@ -96,7 +98,7 @@ fun ServerScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(16.dp),
         ) {
-            if (!hasAllPermissions) {
+            if (!hasRequiredPermissions) {
                 PermissionWarningCard(onClick = onNavigateToPermissions)
                 Spacer(Modifier.height(16.dp))
             }
@@ -120,6 +122,10 @@ fun ServerScreen(
                     }
                 },
                 onChannelStopClick = { channelViewModel.stopChannel() },
+                remoteControlEnabled = isRemoteControlEnabled,
+                onRemoteControlToggle = { enabled ->
+                    viewModel.setRemoteControlEnabled(context, enabled)
+                },
             )
 
             Spacer(Modifier.height(16.dp))

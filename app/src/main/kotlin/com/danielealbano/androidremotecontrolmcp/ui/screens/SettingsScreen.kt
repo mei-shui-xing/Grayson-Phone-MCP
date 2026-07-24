@@ -29,6 +29,7 @@ import com.danielealbano.androidremotecontrolmcp.ui.viewmodels.MainViewModel
 @Composable
 fun SettingsScreen(
     onRequestNotificationPermission: () -> Unit,
+    onRequestInstalledAppsPermission: () -> Unit,
     onRequestCameraPermission: () -> Unit,
     onRequestMicrophonePermission: () -> Unit,
     onRequestLocationPermission: () -> Unit,
@@ -82,6 +83,7 @@ fun SettingsScreen(
             PermissionsSettingsScreen(
                 onBack = { navController.popBackStack() },
                 onRequestNotificationPermission = onRequestNotificationPermission,
+                onRequestInstalledAppsPermission = onRequestInstalledAppsPermission,
                 onRequestCameraPermission = onRequestCameraPermission,
                 onRequestMicrophonePermission = onRequestMicrophonePermission,
                 onRequestLocationPermission = onRequestLocationPermission,

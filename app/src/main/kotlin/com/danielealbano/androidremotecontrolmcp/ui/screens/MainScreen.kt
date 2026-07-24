@@ -28,6 +28,7 @@ import com.danielealbano.androidremotecontrolmcp.ui.viewmodels.MainViewModel
 @Composable
 fun MainScreen(
     onRequestNotificationPermission: () -> Unit,
+    onRequestInstalledAppsPermission: () -> Unit,
     onRequestCameraPermission: () -> Unit,
     onRequestMicrophonePermission: () -> Unit,
     onRequestLocationPermission: () -> Unit,
@@ -69,6 +70,7 @@ fun MainScreen(
             TopLevelRoute.Settings.route -> {
                 SettingsScreen(
                     onRequestNotificationPermission = onRequestNotificationPermission,
+                    onRequestInstalledAppsPermission = onRequestInstalledAppsPermission,
                     onRequestCameraPermission = onRequestCameraPermission,
                     onRequestMicrophonePermission = onRequestMicrophonePermission,
                     onRequestLocationPermission = onRequestLocationPermission,

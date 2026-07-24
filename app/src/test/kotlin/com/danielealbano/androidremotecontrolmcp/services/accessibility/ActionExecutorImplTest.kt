@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.graphics.Rect
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
+import com.danielealbano.androidremotecontrolmcp.services.safety.RemoteControlGate
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -28,12 +29,15 @@ class ActionExecutorImplTest {
     private lateinit var mockService: McpAccessibilityService
     private lateinit var mockCache: AccessibilityNodeCache
     private lateinit var mockTreeParser: AccessibilityTreeParser
+    private lateinit var remoteControlGate: RemoteControlGate
 
     @BeforeEach
     fun setUp() {
         mockCache = mockk<AccessibilityNodeCache>(relaxed = true)
         mockTreeParser = mockk<AccessibilityTreeParser>(relaxed = true)
-        executor = ActionExecutorImpl(mockCache, mockTreeParser)
+        remoteControlGate = mockk()
+        every { remoteControlGate.isEnabled() } returns true
+        executor = ActionExecutorImpl(mockCache, mockTreeParser, remoteControlGate)
         mockService = mockk<McpAccessibilityService>(relaxed = true)
     }
 
@@ -63,6 +67,19 @@ class ActionExecutorImplTest {
                 focused = true,
             ),
         )
+
+    @Test
+    fun `tap is rejected before dispatch when remote touch is paused`() =
+        runTest {
+            every { remoteControlGate.isEnabled() } returns false
+            setServiceInstance(mockService)
+
+            val result = executor.tap(100f, 200f)
+
+            assertTrue(result.isFailure)
+            assertTrue(result.exceptionOrNull()?.message?.contains("paused") == true)
+            verify(exactly = 0) { mockService.dispatchGesture(any(), any(), any()) }
+        }
 
     @Nested
     @DisplayName("Service availability")

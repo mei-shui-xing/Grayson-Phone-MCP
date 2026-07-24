@@ -1,7 +1,10 @@
+@file:Suppress("ReturnCount")
+
 package com.danielealbano.androidremotecontrolmcp.services.accessibility
 
 import android.view.KeyEvent
 import android.view.inputmethod.SurroundingText
+import com.danielealbano.androidremotecontrolmcp.services.safety.RemoteControlGate
 import javax.inject.Inject
 
 /**
@@ -28,7 +31,9 @@ import javax.inject.Inject
  */
 class TypeInputControllerImpl
     @Inject
-    constructor() : TypeInputController {
+    constructor(
+        private val remoteControlGate: RemoteControlGate,
+    ) : TypeInputController {
         private fun getInputConnection() = McpAccessibilityService.inputMethodInstance?.getCurrentInputConnection()
 
         override fun isReady(): Boolean =
@@ -39,6 +44,7 @@ class TypeInputControllerImpl
             text: CharSequence,
             newCursorPosition: Int,
         ): Boolean {
+            if (!remoteControlGate.isEnabled()) return false
             val ic = getInputConnection() ?: return false
             ic.commitText(text, newCursorPosition, null)
             return true
@@ -48,6 +54,7 @@ class TypeInputControllerImpl
             start: Int,
             end: Int,
         ): Boolean {
+            if (!remoteControlGate.isEnabled()) return false
             val ic = getInputConnection() ?: return false
             ic.setSelection(start, end)
             return true
@@ -60,12 +67,14 @@ class TypeInputControllerImpl
         ): SurroundingText? = getInputConnection()?.getSurroundingText(beforeLength, afterLength, flags)
 
         override fun performContextMenuAction(id: Int): Boolean {
+            if (!remoteControlGate.isEnabled()) return false
             val ic = getInputConnection() ?: return false
             ic.performContextMenuAction(id)
             return true
         }
 
         override fun sendKeyEvent(event: KeyEvent): Boolean {
+            if (!remoteControlGate.isEnabled()) return false
             val ic = getInputConnection() ?: return false
             ic.sendKeyEvent(event)
             return true
@@ -75,6 +84,7 @@ class TypeInputControllerImpl
             beforeLength: Int,
             afterLength: Int,
         ): Boolean {
+            if (!remoteControlGate.isEnabled()) return false
             val ic = getInputConnection() ?: return false
             ic.deleteSurroundingText(beforeLength, afterLength)
             return true

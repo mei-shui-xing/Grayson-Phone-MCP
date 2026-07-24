@@ -67,6 +67,14 @@ test-results/
 # Native binaries in jniLibs (build artifacts — cloudflared from make compile-cloudflared, ngrok from Gradle extractNgrokNative)
 app/src/main/jniLibs/
 
+# Local Windows build diagnostics
+/build-*.log
+/*-test.*.log
+/test-*.log
+/full-test.*.log
+/.tmp-install-*
+/.wrangler-login.*.log
+
 # MCP client configuration (contains tokens)
 .mcp.json
 
@@ -80,3 +88,9 @@ app/replay_*.log
 
 # Cached DB-IP source CSV for the geolocation DB generator (the DB itself is generated under build/)
 .dbip-cache/
+
+# Local phone/tunnel acceptance artifacts (never commit)
+/.tmp-*
+/cloudflare-worker/.wrangler/
+/cloudflare-worker/wrangler.jsonc
+/docs/GRAYSON_AUDIT_zh-CN.md

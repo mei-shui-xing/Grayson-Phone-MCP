@@ -12,6 +12,7 @@ class OAuthPolicyTest {
     fun allowsAllowlistedAndLoopback() {
         assertTrue(OAuthPolicy.isAllowedRedirectUri(OAuthPolicy.CLAUDE_REDIRECT_URI))
         OAuthPolicy.ALLOWED_REDIRECT_URIS.forEach { assertTrue(OAuthPolicy.isAllowedRedirectUri(it)) }
+        assertTrue(OAuthPolicy.isAllowedRedirectUri("https://chatgpt.com/connector/oauth/Sh7GnP0dBJ0H"))
         assertTrue(OAuthPolicy.isAllowedRedirectUri("http://localhost/callback"))
         assertTrue(OAuthPolicy.isAllowedRedirectUri("http://localhost:8080/cb"))
         assertTrue(OAuthPolicy.isAllowedRedirectUri("http://127.0.0.1:1234/cb"))
@@ -23,6 +24,13 @@ class OAuthPolicyTest {
     @DisplayName("rejects other redirect uris")
     fun rejectsOther() {
         assertFalse(OAuthPolicy.isAllowedRedirectUri("https://evil.example/cb"))
+        assertFalse(OAuthPolicy.isAllowedRedirectUri("https://chatgpt.com/connector/oauth/"))
+        assertFalse(OAuthPolicy.isAllowedRedirectUri("https://chatgpt.com/connector/oauth/id/extra"))
+        assertFalse(OAuthPolicy.isAllowedRedirectUri("https://chatgpt.com:443/connector/oauth/id"))
+        assertFalse(OAuthPolicy.isAllowedRedirectUri("https://user@chatgpt.com/connector/oauth/id"))
+        assertFalse(OAuthPolicy.isAllowedRedirectUri("https://chatgpt.com/connector/oauth/id?next=evil"))
+        assertFalse(OAuthPolicy.isAllowedRedirectUri("https://chatgpt.com/connector/oauth/id#fragment"))
+        assertFalse(OAuthPolicy.isAllowedRedirectUri("https://chatgpt.com.evil.example/connector/oauth/id"))
         assertFalse(OAuthPolicy.isAllowedRedirectUri("not a uri"))
     }
 

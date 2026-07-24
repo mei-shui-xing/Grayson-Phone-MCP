@@ -89,12 +89,18 @@ class CloudflareTunnelProvider
                     ProcessBuilder(
                         binaryPath,
                         "tunnel",
+                        "--protocol",
+                        "http2",
                         "--url",
                         "http://localhost:$localPort",
                         "--output",
                         "json",
                     )
                 pb.redirectErrorStream(false)
+                pb.environment()["GODEBUG"] = "netdns=cgo"
+                binaryResolver.edgeProxyAddress()?.let {
+                    pb.environment()["CLOUDFLARED_EDGE_PROXY"] = it
+                }
                 val proc = pb.start()
                 process = proc
 
@@ -140,11 +146,19 @@ class CloudflareTunnelProvider
                         "tunnel",
                         "--output",
                         "json",
+                        "--protocol",
+                        // HTTP/2 works through global-mode Android VPNs whose proxy nodes do not
+                        // carry UDP/QUIC. The named tunnel only needs ordinary HTTP ingress here.
+                        "http2",
                         "run",
                         "--token",
                         config.cloudflareTunnelToken,
                     )
                 pb.redirectErrorStream(false)
+                pb.environment()["GODEBUG"] = "netdns=cgo"
+                binaryResolver.edgeProxyAddress()?.let {
+                    pb.environment()["CLOUDFLARED_EDGE_PROXY"] = it
+                }
                 val proc = pb.start()
                 process = proc
 

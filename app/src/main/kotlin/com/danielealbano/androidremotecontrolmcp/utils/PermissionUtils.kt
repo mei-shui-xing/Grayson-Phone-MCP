@@ -1,9 +1,11 @@
 package com.danielealbano.androidremotecontrolmcp.utils
 
 import android.Manifest
+import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Process
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 
@@ -12,6 +14,7 @@ import androidx.core.content.ContextCompat
  */
 object PermissionUtils {
     private const val ENABLED_SERVICES_SEPARATOR = ':'
+    const val ORIGIN_OS_GET_INSTALLED_APPS_PERMISSION = "com.android.permission.GET_INSTALLED_APPS"
 
     /**
      * Checks whether a specific accessibility service is currently enabled.
@@ -66,6 +69,20 @@ object PermissionUtils {
             context,
             Manifest.permission.POST_NOTIFICATIONS,
         ) == PackageManager.PERMISSION_GRANTED
+
+    /** Returns whether this ROM exposes OriginOS's additional installed-app-list permission. */
+    fun isInstalledAppsPermissionSupported(context: Context): Boolean =
+        runCatching {
+            context.packageManager.getPermissionInfo(ORIGIN_OS_GET_INSTALLED_APPS_PERMISSION, 0)
+        }.isSuccess
+
+    /** Checks OriginOS's runtime installed-app-list permission when that permission exists. */
+    fun isInstalledAppsPermissionGranted(context: Context): Boolean =
+        !isInstalledAppsPermissionSupported(context) ||
+            ContextCompat.checkSelfPermission(
+                context,
+                ORIGIN_OS_GET_INSTALLED_APPS_PERMISSION,
+            ) == PackageManager.PERMISSION_GRANTED
 
     /**
      * Checks whether the `CAMERA` runtime permission is granted.
@@ -140,6 +157,23 @@ object PermissionUtils {
     fun openNotificationListenerSettings(context: Context) {
         val intent =
             Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        context.startActivity(intent)
+    }
+
+    fun isUsageAccessGranted(context: Context): Boolean {
+        val appOps = context.getSystemService(AppOpsManager::class.java)
+        return appOps.checkOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            Process.myUid(),
+            context.packageName,
+        ) == AppOpsManager.MODE_ALLOWED
+    }
+
+    fun openUsageAccessSettings(context: Context) {
+        val intent =
+            Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
         context.startActivity(intent)

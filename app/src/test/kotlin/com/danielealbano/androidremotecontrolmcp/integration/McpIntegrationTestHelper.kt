@@ -19,8 +19,10 @@ import com.danielealbano.androidremotecontrolmcp.mcp.oauth.OAuthApprovalCoordina
 import com.danielealbano.androidremotecontrolmcp.mcp.oauth.OAuthRouteDeps
 import com.danielealbano.androidremotecontrolmcp.mcp.oauth.installOAuthRoutes
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.McpToolUtils
+import com.danielealbano.androidremotecontrolmcp.mcp.tools.ReliableAppLauncher
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerAppManagementTools
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerCameraTools
+import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerConvenienceTools
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerFileTools
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerGestureTools
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerIntentTools
@@ -216,8 +218,18 @@ object McpIntegrationTestHelper {
             toolNamePrefix,
             perms,
         )
+        val reliableAppLauncher =
+            ReliableAppLauncher(
+                deps.appManager,
+                deps.actionExecutor,
+                deps.accessibilityServiceProvider,
+                deps.treeParser,
+                deps.elementFinder,
+                deps.nodeCache,
+            )
         registerFileTools(server, deps.storageLocationProvider, deps.fileOperationProvider, toolNamePrefix, perms)
-        registerAppManagementTools(server, deps.appManager, toolNamePrefix, perms)
+        registerAppManagementTools(server, deps.appManager, reliableAppLauncher, toolNamePrefix, perms)
+        registerConvenienceTools(server, reliableAppLauncher, deps.intentDispatcher, toolNamePrefix, perms)
         registerCameraTools(server, deps.cameraProvider, deps.fileOperationProvider, toolNamePrefix, perms)
         registerIntentTools(server, deps.intentDispatcher, toolNamePrefix, perms)
         registerNotificationTools(server, deps.notificationProvider, toolNamePrefix, perms)

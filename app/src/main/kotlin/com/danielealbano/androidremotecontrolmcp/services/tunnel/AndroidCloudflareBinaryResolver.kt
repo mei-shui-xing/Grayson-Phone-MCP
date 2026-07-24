@@ -1,6 +1,7 @@
 package com.danielealbano.androidremotecontrolmcp.services.tunnel
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.util.Log
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -38,6 +39,14 @@ class AndroidCloudflareBinaryResolver
                     binaryFile.absolutePath
                 }
             }
+        }
+
+        override fun edgeProxyAddress(): String? {
+            val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
+            val activeNetwork = connectivityManager.activeNetwork ?: return null
+            val proxy = connectivityManager.getLinkProperties(activeNetwork)?.httpProxy ?: return null
+            if (proxy.host.isNullOrBlank() || proxy.port <= 0) return null
+            return "${proxy.host}:${proxy.port}"
         }
 
         companion object {

@@ -6,6 +6,7 @@ import android.graphics.Rect
 import android.os.Bundle
 import android.util.Log
 import android.view.accessibility.AccessibilityNodeInfo
+import com.danielealbano.androidremotecontrolmcp.services.safety.RemoteControlGate
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
@@ -37,6 +38,7 @@ class ActionExecutorImpl
     constructor(
         private val nodeCache: AccessibilityNodeCache,
         private val treeParser: AccessibilityTreeParser,
+        private val remoteControlGate: RemoteControlGate? = null,
     ) : ActionExecutor {
         // ─────────────────────────────────────────────────────────────────────────
         // Node Actions
@@ -508,6 +510,7 @@ class ActionExecutorImpl
             scale: Float,
             duration: Long,
         ): Result<Unit> {
+            requireRemoteControl()?.let { return it }
             require(scale > 0f) { "Scale must be positive, got $scale" }
 
             if (scale == 1.0f) {
@@ -572,6 +575,7 @@ class ActionExecutorImpl
          */
         @Suppress("ReturnCount")
         override suspend fun customGesture(paths: List<List<GesturePoint>>): Result<Unit> {
+            requireRemoteControl()?.let { return it }
             if (paths.isEmpty()) {
                 return Result.failure(IllegalArgumentException("Gesture paths must not be empty"))
             }
@@ -667,6 +671,7 @@ class ActionExecutorImpl
             actionName: String,
             action: (AccessibilityNodeInfo) -> Result<Unit>,
         ): Result<Unit> {
+            requireRemoteControl()?.let { return it }
             val service =
                 McpAccessibilityService.instance
                     ?: return Result.failure(
@@ -830,10 +835,12 @@ class ActionExecutorImpl
             )
         }
 
+        @Suppress("ReturnCount")
         private fun performGlobalAction(
             action: Int,
             actionName: String,
         ): Result<Unit> {
+            requireRemoteControl()?.let { return it }
             val service =
                 McpAccessibilityService.instance
                     ?: return Result.failure(
@@ -850,10 +857,12 @@ class ActionExecutorImpl
             }
         }
 
+        @Suppress("ReturnCount")
         private suspend fun dispatchSingleStrokeGesture(
             stroke: GestureDescription.StrokeDescription,
             description: String,
         ): Result<Unit> {
+            requireRemoteControl()?.let { return it }
             val service =
                 McpAccessibilityService.instance
                     ?: return Result.failure(
@@ -873,8 +882,9 @@ class ActionExecutorImpl
             service: McpAccessibilityService,
             gesture: GestureDescription,
             description: String,
-        ): Result<Unit> =
-            withTimeoutOrNull(GESTURE_TIMEOUT_MS) {
+        ): Result<Unit> {
+            requireRemoteControl()?.let { return it }
+            return withTimeoutOrNull(GESTURE_TIMEOUT_MS) {
                 suspendCancellableCoroutine { continuation ->
                     val callback =
                         object :
@@ -915,6 +925,14 @@ class ActionExecutorImpl
                 Result.failure(
                     RuntimeException("Gesture timed out after ${GESTURE_TIMEOUT_MS}ms: $description"),
                 )
+            }
+        }
+
+        private fun requireRemoteControl(): Result<Unit>? =
+            if (remoteControlGate?.isEnabled() == false) {
+                Result.failure(IllegalStateException(RemoteControlGate.PAUSED_MESSAGE))
+            } else {
+                null
             }
 
         /**

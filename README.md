@@ -1,5 +1,7 @@
 # Android Remote Control MCP
 
+[简体中文说明](README.zh-CN.md)
+
 [![CI](https://github.com/danielealbano/android-remote-control-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/danielealbano/android-remote-control-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -30,9 +32,9 @@ The app runs directly on your Android device (or emulator) and exposes an HTTP s
 - Auto-start on boot
 - Remote access tunnels via Cloudflare Quick Tunnels or ngrok (public HTTPS URL)
 
-### 56 MCP Tools across 13 Categories
+### 60 MCP Tools across 15 Categories
 
-Screen introspection, system actions, touch actions, gestures, node actions, text input, utilities, file operations, app management, camera, intents, notifications, and location.
+Screen introspection, system actions, touch actions, gestures, node actions, text input, utilities, file operations, app management, usage and screen time, camera, intents, notifications, location, and sharing.
 
 All tool names use the `android_` prefix by default (e.g., `android_tap`). When a device slug is configured (e.g., `pixel7`), the prefix becomes `android_pixel7_` (e.g., `android_pixel7_tap`).
 
@@ -43,7 +45,8 @@ See [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) for the full tool reference with inpu
 - Server status monitoring (running/stopped) with permission warning banner
 - Connection info display (IP, port, token, tunnel URL)
 - Per-tool and per-parameter permissions (enable/disable individual MCP tools)
-- Permission management (Accessibility, Notifications, Camera, Microphone)
+- Permission management (Accessibility, Usage Access, Notifications, Camera, Microphone)
+- Persistent notification switch to pause or resume remote touch and text input locally
 - Remote access tunnel configuration (Cloudflare / ngrok)
 - Storage location management (automatic locations + SAF authorization for file tools)
 - Server log viewer (MCP tool calls, tunnel events)
@@ -53,7 +56,7 @@ See [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) for the full tool reference with inpu
 
 | Feature | This project | [mobile-mcp] | [Android-MCP] | [android-mcp-server] | [adb-mcp] | [droidrun-mcp] |
 |---------|:-:|:-:|:-:|:-:|:-:|:-:|
-| MCP tools | 56 | 21 | 11 | 5 | 10 | 11 |
+| MCP tools | 60 | 21 | 11 | 5 | 10 | 11 |
 | Runs on the phone (no ADB) | :white_check_mark: | :x: | :x: | :x: | :x: | :x: |
 | Action latency | 10-100 ms | 1-4 s | 1-4 s | 1-4 s | 1-4 s | 1-4 s |
 | Works over the internet | :white_check_mark: | :x: | :x: | :x: | :x: | :x: |
@@ -147,6 +150,7 @@ The app declares the permissions below. **Normal** permissions are granted autom
 | `READ_MEDIA_AUDIO` | Runtime | "All files" mode for built-in audio storage locations (Android 13+) |
 | Accessibility Service | Special access | UI introspection, action execution, and screenshots — **required** for core functionality |
 | Notification Listener | Special access | Reading and managing notifications via notification tools |
+| `PACKAGE_USAGE_STATS` / Usage Access | Special access | App foreground-time and screen-time tools |
 
 ---
 

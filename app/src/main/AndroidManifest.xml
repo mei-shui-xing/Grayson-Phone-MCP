@@ -18,7 +18,13 @@
 
     <!-- App Management -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- OriginOS adds a separate dangerous permission on top of QUERY_ALL_PACKAGES. -->
+    <uses-permission android:name="com.android.permission.GET_INSTALLED_APPS" />
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- Granted manually in Settings > Special app access > Usage access. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
 
     <!-- Camera -->
     <uses-permission android:name="android.permission.CAMERA" />
@@ -131,13 +137,8 @@
         <!-- ADB Configuration Receiver (headless setup via adb shell am broadcast) -->
         <receiver
             android:name=".services.mcp.AdbConfigReceiver"
-            android:exported="true">
-        </receiver>
-
-        <!-- E2E Configuration Receiver (test configuration injection via adb shell) -->
-        <receiver
-            android:name=".debug.E2EConfigReceiver"
-            android:exported="true">
+            android:exported="true"
+            android:permission="android.permission.DUMP">
         </receiver>
 
         <!-- Event Channel Service -->
@@ -150,6 +151,7 @@
         <activity
             android:name=".services.mcp.AdbServiceTrampolineActivity"
             android:exported="true"
+            android:permission="android.permission.DUMP"
             android:theme="@android:style/Theme.NoDisplay"
             android:excludeFromRecents="true"
             android:noHistory="true" />

@@ -35,7 +35,7 @@ class McpProtocolIntegrationTest {
         }
 
     @Test
-    fun `listTools returns all 56 registered tools`() =
+    fun `listTools returns all 61 registered tools`() =
         runTest {
             McpIntegrationTestHelper.withTestApplication { client, _ ->
                 val result = client.listTools()
@@ -135,7 +135,7 @@ class McpProtocolIntegrationTest {
         }
 
     companion object {
-        private const val EXPECTED_TOOL_COUNT = 56
+        private const val EXPECTED_TOOL_COUNT = 61
 
         private val EXPECTED_TOOL_NAMES =
             setOf(
@@ -187,8 +187,14 @@ class McpProtocolIntegrationTest {
                 "android_delete_file",
                 // App management
                 "android_open_app",
+                "android_open_app_by_name",
                 "android_list_apps",
+                "android_get_app_info",
                 "android_close_app",
+                // Alarms and timers
+                "android_set_alarm",
+                "android_set_timer",
+                "android_show_alarms",
                 // Intent tools
                 "android_send_intent",
                 "android_open_uri",

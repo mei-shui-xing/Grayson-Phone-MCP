@@ -57,6 +57,7 @@ private fun disabledColor(): Color = if (isSystemInDarkTheme()) Color(0xFFEF5350
 fun PermissionsSettingsScreen(
     onBack: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
+    onRequestInstalledAppsPermission: () -> Unit,
     onRequestCameraPermission: () -> Unit,
     onRequestMicrophonePermission: () -> Unit,
     onRequestLocationPermission: () -> Unit,
@@ -68,7 +69,12 @@ fun PermissionsSettingsScreen(
 
     val isAccessibilityEnabled by viewModel.isAccessibilityEnabled.collectAsStateWithLifecycle()
     val isNotificationPermissionGranted by viewModel.isNotificationPermissionGranted.collectAsStateWithLifecycle()
+    val isInstalledAppsPermissionSupported by
+        viewModel.isInstalledAppsPermissionSupported.collectAsStateWithLifecycle()
+    val isInstalledAppsPermissionGranted by
+        viewModel.isInstalledAppsPermissionGranted.collectAsStateWithLifecycle()
     val isNotificationListenerEnabled by viewModel.isNotificationListenerEnabled.collectAsStateWithLifecycle()
+    val isUsageAccessGranted by viewModel.isUsageAccessGranted.collectAsStateWithLifecycle()
     val isCameraPermissionGranted by viewModel.isCameraPermissionGranted.collectAsStateWithLifecycle()
     val isMicrophonePermissionGranted by viewModel.isMicrophonePermissionGranted.collectAsStateWithLifecycle()
     val isLocationPermissionGranted by viewModel.isLocationPermissionGranted.collectAsStateWithLifecycle()
@@ -149,6 +155,38 @@ fun PermissionsSettingsScreen(
                     PermissionUtils.openNotificationListenerSettings(context)
                 },
                 actionEnabled = !isNotificationListenerEnabled,
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (isInstalledAppsPermissionSupported) {
+                PermissionRow(
+                    label = stringResource(R.string.permission_installed_apps),
+                    isEnabled = isInstalledAppsPermissionGranted,
+                    buttonText =
+                        if (isInstalledAppsPermissionGranted) {
+                            stringResource(R.string.permission_granted)
+                        } else {
+                            stringResource(R.string.permission_grant)
+                        },
+                    onAction = onRequestInstalledAppsPermission,
+                    actionEnabled = !isInstalledAppsPermissionGranted,
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            PermissionRow(
+                label = stringResource(R.string.permission_usage_access),
+                isEnabled = isUsageAccessGranted,
+                buttonText =
+                    if (isUsageAccessGranted) {
+                        stringResource(R.string.permission_granted)
+                    } else {
+                        stringResource(R.string.permission_grant)
+                    },
+                onAction = { PermissionUtils.openUsageAccessSettings(context) },
+                actionEnabled = !isUsageAccessGranted,
             )
 
             Spacer(modifier = Modifier.height(8.dp))

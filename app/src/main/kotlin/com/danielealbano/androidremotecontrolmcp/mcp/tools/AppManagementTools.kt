@@ -33,7 +33,7 @@ import javax.inject.Inject
 class OpenAppHandler
     @Inject
     constructor(
-        private val appManager: AppManager,
+        private val reliableAppLauncher: ReliableAppLauncher,
     ) {
         @Suppress("TooGenericExceptionCaught")
         suspend fun execute(arguments: JsonObject?): CallToolResult {
@@ -42,12 +42,11 @@ class OpenAppHandler
                 throw McpToolException.InvalidParams("Parameter 'package_id' must not be empty")
             }
 
-            Log.d(TAG, "Executing open_app for package: $packageId")
-            val result = appManager.openApp(packageId)
-            result.onFailure { e ->
-                throw McpToolException.ActionFailed("Failed to open application '$packageId': ${e.message}")
-            }
-            return McpToolUtils.textResult("Application '$packageId' launched successfully.")
+            Log.d(TAG, "Executing reliable open_app for package: $packageId")
+            val app = reliableAppLauncher.openByPackage(packageId)
+            return McpToolUtils.textResult(
+                "Application '${app.name}' opened successfully (${app.packageId}).",
+            )
         }
 
         fun register(
@@ -131,6 +130,9 @@ class ListAppsHandler
                                 }
                                 put("version_code", app.versionCode)
                                 put("is_system", app.isSystemApp)
+                                put("first_install_time_ms", app.firstInstallTime)
+                                put("last_update_time_ms", app.lastUpdateTime)
+                                put("is_launchable", app.isLaunchable)
                             },
                         )
                     }
@@ -180,6 +182,51 @@ class ListAppsHandler
             private const val TAG = "MCP:ListAppsHandler"
         }
     }
+
+class GetAppInfoHandler(
+    private val appManager: AppManager,
+) {
+    suspend fun execute(arguments: JsonObject?): CallToolResult {
+        val packageId = McpToolUtils.requireString(arguments, "package_id")
+        val app =
+            appManager.listInstalledApps(AppFilter.ALL, null).firstOrNull { it.packageId == packageId }
+                ?: throw McpToolException.ActionFailed("Application '$packageId' is not installed or not visible")
+        val json =
+            buildJsonObject {
+                put("package_id", app.packageId)
+                put("name", app.name)
+                app.versionName?.let { put("version_name", it) }
+                put("version_code", app.versionCode)
+                put("is_system", app.isSystemApp)
+                put("first_install_time_ms", app.firstInstallTime)
+                put("last_update_time_ms", app.lastUpdateTime)
+                put("is_launchable", app.isLaunchable)
+            }
+        return McpToolUtils.untrustedTextResult(Json.encodeToString(json))
+    }
+
+    fun register(
+        server: Server,
+        toolNamePrefix: String,
+    ) {
+        server.addTool(
+            name = "$toolNamePrefix$TOOL_NAME",
+            description = "Returns detailed installation and launchability information for one package ID.",
+            inputSchema =
+                ToolSchema(
+                    properties =
+                        buildJsonObject {
+                            putJsonObject("package_id") { put("type", "string") }
+                        },
+                    required = listOf("package_id"),
+                ),
+        ) { request -> execute(request.arguments) }
+    }
+
+    companion object {
+        const val TOOL_NAME = "get_app_info"
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // close_app
@@ -259,10 +306,14 @@ class CloseAppHandler
 fun registerAppManagementTools(
     server: Server,
     appManager: AppManager,
+    reliableAppLauncher: ReliableAppLauncher,
     toolNamePrefix: String,
     perms: ToolPermissionsConfig,
 ) {
-    if (perms.isToolEnabled(OpenAppHandler.TOOL_NAME)) OpenAppHandler(appManager).register(server, toolNamePrefix)
+    if (perms.isToolEnabled(OpenAppHandler.TOOL_NAME)) {
+        OpenAppHandler(reliableAppLauncher).register(server, toolNamePrefix)
+    }
     if (perms.isToolEnabled(ListAppsHandler.TOOL_NAME)) ListAppsHandler(appManager).register(server, toolNamePrefix)
+    if (perms.isToolEnabled(GetAppInfoHandler.TOOL_NAME)) GetAppInfoHandler(appManager).register(server, toolNamePrefix)
     if (perms.isToolEnabled(CloseAppHandler.TOOL_NAME)) CloseAppHandler(appManager).register(server, toolNamePrefix)
 }

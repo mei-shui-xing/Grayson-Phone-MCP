@@ -22,6 +22,7 @@ import com.danielealbano.androidremotecontrolmcp.di.IoDispatcher
 import com.danielealbano.androidremotecontrolmcp.services.accessibility.McpAccessibilityService
 import com.danielealbano.androidremotecontrolmcp.services.mcp.McpServerService
 import com.danielealbano.androidremotecontrolmcp.services.notifications.McpNotificationListenerService
+import com.danielealbano.androidremotecontrolmcp.services.safety.RemoteControlGate
 import com.danielealbano.androidremotecontrolmcp.services.storage.StorageLocationProvider
 import com.danielealbano.androidremotecontrolmcp.services.tunnel.TunnelManager
 import com.danielealbano.androidremotecontrolmcp.utils.Logger
@@ -48,6 +49,7 @@ class MainViewModel
         private val settingsRepository: SettingsRepository,
         private val tunnelManager: TunnelManager,
         private val storageLocationProvider: StorageLocationProvider,
+        private val remoteControlGate: RemoteControlGate,
         @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
     ) : ViewModel() {
         private val _serverConfig = MutableStateFlow(ServerConfig())
@@ -55,6 +57,8 @@ class MainViewModel
 
         private val _serverStatus = MutableStateFlow<ServerStatus>(ServerStatus.Stopped)
         val serverStatus: StateFlow<ServerStatus> = _serverStatus.asStateFlow()
+
+        val isRemoteControlEnabled: StateFlow<Boolean> = remoteControlGate.enabled
 
         private val _portInput = MutableStateFlow("")
         val portInput: StateFlow<String> = _portInput.asStateFlow()
@@ -77,6 +81,14 @@ class MainViewModel
         private val _isNotificationPermissionGranted = MutableStateFlow(false)
         val isNotificationPermissionGranted: StateFlow<Boolean> = _isNotificationPermissionGranted.asStateFlow()
 
+        private val _isInstalledAppsPermissionSupported = MutableStateFlow(false)
+        val isInstalledAppsPermissionSupported: StateFlow<Boolean> =
+            _isInstalledAppsPermissionSupported.asStateFlow()
+
+        private val _isInstalledAppsPermissionGranted = MutableStateFlow(true)
+        val isInstalledAppsPermissionGranted: StateFlow<Boolean> =
+            _isInstalledAppsPermissionGranted.asStateFlow()
+
         private val _isCameraPermissionGranted = MutableStateFlow(false)
         val isCameraPermissionGranted: StateFlow<Boolean> = _isCameraPermissionGranted.asStateFlow()
 
@@ -88,6 +100,9 @@ class MainViewModel
 
         private val _isNotificationListenerEnabled = MutableStateFlow(false)
         val isNotificationListenerEnabled: StateFlow<Boolean> = _isNotificationListenerEnabled.asStateFlow()
+
+        private val _isUsageAccessGranted = MutableStateFlow(false)
+        val isUsageAccessGranted: StateFlow<Boolean> = _isUsageAccessGranted.asStateFlow()
 
         private val _tunnelStatus = MutableStateFlow<TunnelStatus>(TunnelStatus.Disconnected)
         val tunnelStatus: StateFlow<TunnelStatus> = _tunnelStatus.asStateFlow()
@@ -261,6 +276,25 @@ class MainViewModel
             context.startForegroundService(intent)
         }
 
+        fun setRemoteControlEnabled(
+            context: Context,
+            enabled: Boolean,
+        ) {
+            remoteControlGate.setEnabled(enabled)
+            if (McpServerService.serverStatus.value is ServerStatus.Running) {
+                val intent =
+                    Intent(context, McpServerService::class.java).apply {
+                        action =
+                            if (enabled) {
+                                McpServerService.ACTION_RESUME_REMOTE_CONTROL
+                            } else {
+                                McpServerService.ACTION_PAUSE_REMOTE_CONTROL
+                            }
+                    }
+                context.startForegroundService(intent)
+            }
+        }
+
         fun refreshPermissionStatus(context: Context) {
             _isAccessibilityEnabled.value =
                 PermissionUtils.isAccessibilityServiceEnabled(
@@ -269,6 +303,10 @@ class MainViewModel
                 )
             _isNotificationPermissionGranted.value =
                 PermissionUtils.isNotificationPermissionGranted(context)
+            _isInstalledAppsPermissionSupported.value =
+                PermissionUtils.isInstalledAppsPermissionSupported(context)
+            _isInstalledAppsPermissionGranted.value =
+                PermissionUtils.isInstalledAppsPermissionGranted(context)
             _isCameraPermissionGranted.value =
                 PermissionUtils.isCameraPermissionGranted(context)
             _isMicrophonePermissionGranted.value =
@@ -280,6 +318,8 @@ class MainViewModel
                     context,
                     McpNotificationListenerService::class.java,
                 )
+            _isUsageAccessGranted.value =
+                runCatching { PermissionUtils.isUsageAccessGranted(context) }.getOrDefault(false)
             refreshStorageLocations()
         }
 

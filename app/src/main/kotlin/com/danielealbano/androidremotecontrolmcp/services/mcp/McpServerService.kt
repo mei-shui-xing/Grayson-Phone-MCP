@@ -24,8 +24,10 @@ import com.danielealbano.androidremotecontrolmcp.mcp.oauth.JwtTokenService
 import com.danielealbano.androidremotecontrolmcp.mcp.oauth.OAuthApprovalCoordinator
 import com.danielealbano.androidremotecontrolmcp.mcp.oauth.OAuthServerDeps
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.McpToolUtils
+import com.danielealbano.androidremotecontrolmcp.mcp.tools.ReliableAppLauncher
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerAppManagementTools
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerCameraTools
+import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerConvenienceTools
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerFileTools
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerGestureTools
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerIntentTools
@@ -37,6 +39,7 @@ import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerSharingTools
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerSystemActionTools
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerTextInputTools
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerTouchActionTools
+import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerUsageStatsTools
 import com.danielealbano.androidremotecontrolmcp.mcp.tools.registerUtilityTools
 import com.danielealbano.androidremotecontrolmcp.services.accessibility.AccessibilityNodeCache
 import com.danielealbano.androidremotecontrolmcp.services.accessibility.AccessibilityServiceProvider
@@ -52,6 +55,7 @@ import com.danielealbano.androidremotecontrolmcp.services.camera.CameraProvider
 import com.danielealbano.androidremotecontrolmcp.services.intents.IntentDispatcher
 import com.danielealbano.androidremotecontrolmcp.services.location.LocationProvider
 import com.danielealbano.androidremotecontrolmcp.services.notifications.NotificationProvider
+import com.danielealbano.androidremotecontrolmcp.services.safety.RemoteControlGate
 import com.danielealbano.androidremotecontrolmcp.services.screencapture.ScreenCaptureProvider
 import com.danielealbano.androidremotecontrolmcp.services.screencapture.ScreenshotAnnotator
 import com.danielealbano.androidremotecontrolmcp.services.screencapture.ScreenshotEncoder
@@ -60,6 +64,7 @@ import com.danielealbano.androidremotecontrolmcp.services.sharing.SharedContentI
 import com.danielealbano.androidremotecontrolmcp.services.storage.FileOperationProvider
 import com.danielealbano.androidremotecontrolmcp.services.storage.StorageLocationProvider
 import com.danielealbano.androidremotecontrolmcp.services.tunnel.TunnelManager
+import com.danielealbano.androidremotecontrolmcp.services.usage.UsageStatsProvider
 import com.danielealbano.androidremotecontrolmcp.ui.MainActivity
 import com.danielealbano.androidremotecontrolmcp.utils.NetworkUtils
 import dagger.hilt.android.AndroidEntryPoint
@@ -96,6 +101,7 @@ import javax.inject.Inject
  * 6. On stop: gracefully shuts down server, clears singleton
  */
 @AndroidEntryPoint
+@Suppress("TooManyFunctions")
 class McpServerService : Service() {
     @Inject lateinit var settingsRepository: SettingsRepository
 
@@ -155,6 +161,10 @@ class McpServerService : Service() {
 
     @Inject lateinit var geoIpResolver: GeoIpResolver
 
+    @Inject lateinit var remoteControlGate: RemoteControlGate
+
+    @Inject lateinit var usageStatsProvider: UsageStatsProvider
+
     /** Config of the currently running server; used to build capability-link base URLs. */
     @Volatile
     private var activeConfig: ServerConfig? = null
@@ -171,6 +181,7 @@ class McpServerService : Service() {
         Log.i(TAG, "McpServerService created")
     }
 
+    @Suppress("ReturnCount")
     override fun onStartCommand(
         intent: Intent?,
         flags: Int,
@@ -179,6 +190,18 @@ class McpServerService : Service() {
         startForeground(NOTIFICATION_ID, createNotification())
 
         when (intent?.action) {
+            ACTION_PAUSE_REMOTE_CONTROL -> {
+                remoteControlGate.setEnabled(false)
+                refreshNotification()
+                return START_STICKY
+            }
+
+            ACTION_RESUME_REMOTE_CONTROL -> {
+                remoteControlGate.setEnabled(true)
+                refreshNotification()
+                return START_STICKY
+            }
+
             ACTION_STOP -> {
                 stopSelf()
                 return START_NOT_STICKY
@@ -424,12 +447,23 @@ class McpServerService : Service() {
             toolNamePrefix,
             perms,
         )
+        val reliableAppLauncher =
+            ReliableAppLauncher(
+                appManager,
+                actionExecutor,
+                accessibilityServiceProvider,
+                treeParser,
+                elementFinder,
+                nodeCache,
+            )
         registerFileTools(server, storageLocationProvider, fileOperationProvider, toolNamePrefix, perms)
-        registerAppManagementTools(server, appManager, toolNamePrefix, perms)
+        registerAppManagementTools(server, appManager, reliableAppLauncher, toolNamePrefix, perms)
+        registerConvenienceTools(server, reliableAppLauncher, intentDispatcher, toolNamePrefix, perms)
         registerCameraTools(server, cameraProvider, fileOperationProvider, toolNamePrefix, perms)
         registerIntentTools(server, intentDispatcher, toolNamePrefix, perms)
         registerNotificationTools(server, notificationProvider, toolNamePrefix, perms)
         registerLocationTools(server, locationProvider, toolNamePrefix, perms)
+        registerUsageStatsTools(server, usageStatsProvider, toolNamePrefix, perms)
         registerSharingBundle(server, toolNamePrefix, perms, fileSizeLimitMb)
     }
 
@@ -526,19 +560,64 @@ class McpServerService : Service() {
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
 
+        val remoteControlEnabled = remoteControlGate.isEnabled()
+        val safetyIntent =
+            Intent(this, McpServerService::class.java).apply {
+                action =
+                    if (remoteControlEnabled) {
+                        ACTION_PAUSE_REMOTE_CONTROL
+                    } else {
+                        ACTION_RESUME_REMOTE_CONTROL
+                    }
+            }
+        val safetyPendingIntent =
+            PendingIntent.getService(
+                this,
+                1,
+                safetyIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+
         return NotificationCompat
             .Builder(this, McpApplication.MCP_SERVER_CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_mcp_server_title))
-            .setSmallIcon(R.drawable.ic_notification)
+            .setContentText(
+                getString(
+                    if (remoteControlEnabled) {
+                        R.string.notification_remote_control_enabled
+                    } else {
+                        R.string.notification_remote_control_paused
+                    },
+                ),
+            ).setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
-            .setOngoing(true)
+            .addAction(
+                0,
+                getString(
+                    if (remoteControlEnabled) {
+                        R.string.notification_pause_remote_control
+                    } else {
+                        R.string.notification_resume_remote_control
+                    },
+                ),
+                safetyPendingIntent,
+            ).setOngoing(true)
             .build()
+    }
+
+    private fun refreshNotification() {
+        getSystemService(android.app.NotificationManager::class.java)
+            .notify(NOTIFICATION_ID, createNotification())
     }
 
     companion object {
         private const val TAG = "MCP:ServerService"
         const val ACTION_START = "com.danielealbano.androidremotecontrolmcp.ACTION_START_MCP_SERVER"
         const val ACTION_STOP = "com.danielealbano.androidremotecontrolmcp.ACTION_STOP_MCP_SERVER"
+        const val ACTION_PAUSE_REMOTE_CONTROL =
+            "com.danielealbano.androidremotecontrolmcp.ACTION_PAUSE_REMOTE_CONTROL"
+        const val ACTION_RESUME_REMOTE_CONTROL =
+            "com.danielealbano.androidremotecontrolmcp.ACTION_RESUME_REMOTE_CONTROL"
         const val NOTIFICATION_ID = 1001
         const val SHUTDOWN_GRACE_PERIOD_MS = 1000L
         const val SHUTDOWN_TIMEOUT_MS = 5000L

@@ -10,6 +10,13 @@
     <string name="notification_channel_mcp_server_name">MCP Server</string>
     <!-- Notification Content -->
     <string name="notification_mcp_server_title">MCP Server Running</string>
+    <string name="notification_remote_control_enabled">Remote touch is enabled</string>
+    <string name="notification_remote_control_paused">Remote touch is PAUSED; viewing remains available</string>
+    <string name="notification_pause_remote_control">Pause remote touch</string>
+    <string name="notification_resume_remote_control">Resume remote touch</string>
+    <string name="remote_control_status_label">Remote Touch</string>
+    <string name="remote_control_status_enabled">Enabled</string>
+    <string name="remote_control_status_paused">Paused; viewing remains available</string>
 
     <!-- App Bar -->
     <string name="app_bar_title">MCP Remote Control</string>
@@ -104,6 +111,8 @@
     <string name="permission_microphone">Microphone</string>
     <string name="permission_notification_listener">Notification Listener</string>
     <string name="permission_location">Location</string>
+    <string name="permission_usage_access">App Usage &amp; Screen Time</string>
+    <string name="permission_installed_apps">Installed App List (OriginOS)</string>
 
     <!-- Permission Warning -->
     <string name="permission_warning_message">Some permissions are not granted. Tap to review.</string>
