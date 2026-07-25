@@ -128,3 +128,7 @@ MCP 端点是 `http://127.0.0.1:8080/mcp`。每次请求必须携带 App 中显�
 - `docs/PROJECT.md`
 
 本分支的审计结论、真机信息、测试记录、未完成项和已知问题见 `docs/GRAYSON_AUDIT_zh-CN.md`。
+
+## 相关项目
+
+抖音、Windows 电脑和 Android 手机三个 MCP 项目的统一入口：[mcp-tools-link-hub](https://github.com/mei-shui-xing/mcp-tools-link-hub)。
