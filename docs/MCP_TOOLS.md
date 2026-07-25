@@ -1349,13 +1349,13 @@ curl -X POST http://localhost:8080/mcp \
 
 ## 6. Text Input Tools
 
-Natural text input tools that use the Android AccessibilityService's `FLAG_INPUT_METHOD_EDITOR` + `AccessibilityInputConnection.commitText()` API (API 33+) for character-by-character typing that is indistinguishable from real IME input. All type tools require `node_id` (mandatory), click the node to focus it, and return the field content after the operation for verification.
+Text input tools prefer Android AccessibilityService's `FLAG_INPUT_METHOD_EDITOR` + `AccessibilityInputConnection.commitText()` API (API 33+) for natural character-by-character typing. If an editable node never exposes an InputConnection, the tools may use `ACTION_SET_TEXT` as a bounded compatibility fallback. That fallback succeeds only when a fresh accessibility readback exactly matches the requested result; otherwise the tool fails and directs the caller to screenshot/visual fallback. Responses identify which input route was used. All type tools require `node_id` (mandatory), click the node to focus it, and return the field content after the operation for verification.
 
 All typing operations are serialized via a Mutex — concurrent MCP requests are queued, not interleaved.
 
 ### `android_type_append_text`
 
-Type text character by character at the end of a text field. Uses natural InputConnection typing (indistinguishable from keyboard input). For text longer than 2000 characters, call this tool multiple times — subsequent calls continue typing at the current cursor position.
+Type text at the end of a text field. Prefers natural InputConnection typing and uses verified `ACTION_SET_TEXT` only when InputConnection is unavailable. For text longer than 2000 characters, call this tool multiple times — subsequent calls continue at the current end position.
 
 **Input Schema**:
 | Parameter | Type | Required | Default | Description |
@@ -1365,7 +1365,7 @@ Type text character by character at the end of a text field. Uses natural InputC
 | `typing_speed` | integer | No | 250 | Base delay between characters in ms (min: 10, max: 5000) |
 | `typing_speed_variance` | integer | No | 50 | Random variance in ms, clamped to [0, typing_speed] |
 
-**Output**: `"Typed N characters at end of node '<node_id>'.\nField content: <content>"`
+**Output**: `"Typed N characters at end of node '<node_id>'.\nInput route: <natural InputConnection|verified accessibility ACTION_SET_TEXT fallback>\nField content: <content>"`
 
 **Request Example**:
 ```json
@@ -1403,13 +1403,13 @@ Type text character by character at the end of a text field. Uses natural InputC
 - **Invalid params**: Missing or empty `node_id` or `text`, text exceeds 2000 characters, `typing_speed` out of range (10-5000), `typing_speed_variance` negative
 - **Permission denied**: Accessibility service not enabled
 - **Node not found**: Node not found in accessibility tree
-- **Action failed**: Click failed, input connection not ready (node may not be editable), cursor positioning failed, typing failed (input connection lost)
+- **Action failed**: Click failed, cursor positioning/typing failed, or the `ACTION_SET_TEXT` fallback could not be verified; use screenshot/visual fallback when the node is missing or not editable
 
 ---
 
 ### `android_type_insert_text`
 
-Type text character by character at a specific position in a text field. Uses natural InputConnection typing (indistinguishable from keyboard input).
+Type text at a specific position in a text field. Prefers natural InputConnection typing and uses verified `ACTION_SET_TEXT` only when InputConnection is unavailable.
 
 **Input Schema**:
 | Parameter | Type | Required | Default | Description |
@@ -1420,7 +1420,7 @@ Type text character by character at a specific position in a text field. Uses na
 | `typing_speed` | integer | No | 250 | Base delay between characters in ms (min: 10, max: 5000) |
 | `typing_speed_variance` | integer | No | 50 | Random variance in ms, clamped to [0, typing_speed] |
 
-**Output**: `"Typed N characters at offset M in node '<node_id>'.\nField content: <content>"`
+**Output**: `"Typed N characters at offset M in node '<node_id>'.\nInput route: <route>\nField content: <content>"`
 
 **Request Example**:
 ```json
@@ -1465,7 +1465,7 @@ Type text character by character at a specific position in a text field. Uses na
 
 ### `android_type_replace_text`
 
-Find and replace text in a field by typing the replacement naturally. Finds the first occurrence of search text, selects and deletes it, then types new_text character by character via InputConnection. If `new_text` is empty, only deletes the found text (delete-only mode).
+Find and replace text in a field. Prefers InputConnection selection/deletion and natural typing; when InputConnection is unavailable, computes the same first-occurrence replacement and applies it through verified `ACTION_SET_TEXT`. If `new_text` is empty, only deletes the found text.
 
 **Input Schema**:
 | Parameter | Type | Required | Default | Description |
@@ -1476,7 +1476,7 @@ Find and replace text in a field by typing the replacement naturally. Finds the 
 | `typing_speed` | integer | No | 250 | Base delay between characters in ms (min: 10, max: 5000) |
 | `typing_speed_variance` | integer | No | 50 | Random variance in ms, clamped to [0, typing_speed] |
 
-**Output**: `"Replaced N characters with M characters in node '<node_id>'.\nField content: <content>"`
+**Output**: `"Replaced N characters with M characters in node '<node_id>'.\nInput route: <route>\nField content: <content>"`
 
 **Request Example**:
 ```json
@@ -1521,14 +1521,14 @@ Find and replace text in a field by typing the replacement naturally. Finds the 
 
 ### `android_type_clear_text`
 
-Clear all text from a field naturally using select-all + delete. Uses InputConnection operations (indistinguishable from user action). If the field is already empty, returns success without performing any action.
+Clear all text from a field. Prefers InputConnection select-all + delete and uses verified `ACTION_SET_TEXT` only when InputConnection is unavailable. If the field is already empty, returns success without performing any action.
 
 **Input Schema**:
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
 | `node_id` | string | Yes | - | Target node ID to clear |
 
-**Output**: `"Text cleared from node '<node_id>'.\nField content: <content>"`
+**Output**: `"Text cleared from node '<node_id>'.\nInput route: <route>\nField content: <content>"`
 
 **Request Example**:
 ```json

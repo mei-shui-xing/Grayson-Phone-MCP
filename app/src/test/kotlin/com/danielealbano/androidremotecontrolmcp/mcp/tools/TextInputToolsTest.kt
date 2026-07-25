@@ -49,12 +49,25 @@ class TextInputToolsTest {
     private val mockFocusedNode = mockk<AccessibilityNodeInfo>()
     private val mockWindowInfo = mockk<AccessibilityWindowInfo>()
 
+    private val sampleEditNode =
+        AccessibilityNodeData(
+            id = "node_edit",
+            className = "android.widget.EditText",
+            text = "existing",
+            bounds = BoundsData(10, 10, 500, 100),
+            focusable = true,
+            editable = true,
+            enabled = true,
+            visible = true,
+        )
+
     private val sampleTree =
         AccessibilityNodeData(
             id = "node_root",
             className = "android.widget.FrameLayout",
             bounds = BoundsData(0, 0, 1080, 2400),
             visible = true,
+            children = listOf(sampleEditNode),
         )
 
     private val sampleWindows =
@@ -803,10 +816,18 @@ class TextInputToolsTest {
             }
 
         @Test
-        fun `throws error when input connection not ready after poll timeout`() =
+        fun `uses verified ACTION_SET_TEXT fallback when input connection is unavailable`() =
             runTest {
                 coEvery { mockActionExecutor.clickNode("node_edit", sampleWindows) } returns Result.success(Unit)
+                coEvery {
+                    mockActionExecutor.setTextOnNode("node_edit", "existingHello", sampleWindows)
+                } returns Result.success(Unit)
                 every { mockTypeInputController.isReady() } returns false
+                val updatedTree =
+                    sampleTree.copy(children = listOf(sampleEditNode.copy(text = "existingHello")))
+                every {
+                    mockTreeParser.parseTree(mockRootNode, "root_w0", any())
+                } returnsMany listOf(sampleTree, updatedTree)
 
                 val params =
                     buildJsonObject {
@@ -814,8 +835,8 @@ class TextInputToolsTest {
                         put("text", "Hello")
                     }
 
-                val exception = assertThrows<McpToolException.ActionFailed> { tool.execute(params) }
-                assertTrue(exception.message!!.contains("Input connection not available"))
+                val result = tool.execute(params)
+                assertTrue(extractTextContent(result).contains("Field content: existingHello"))
             }
 
         @Test
@@ -1525,15 +1546,22 @@ class TextInputToolsTest {
             }
 
         @Test
-        fun `throws error when input connection not ready after poll timeout`() =
+        fun `uses verified ACTION_SET_TEXT fallback to clear when input connection is unavailable`() =
             runTest {
                 coEvery { mockActionExecutor.clickNode("node_edit", sampleWindows) } returns Result.success(Unit)
+                coEvery {
+                    mockActionExecutor.setTextOnNode("node_edit", "", sampleWindows)
+                } returns Result.success(Unit)
                 every { mockTypeInputController.isReady() } returns false
+                val updatedTree = sampleTree.copy(children = listOf(sampleEditNode.copy(text = "")))
+                every {
+                    mockTreeParser.parseTree(mockRootNode, "root_w0", any())
+                } returnsMany listOf(sampleTree, updatedTree)
 
                 val params = buildJsonObject { put("node_id", "node_edit") }
 
-                val exception = assertThrows<McpToolException.ActionFailed> { tool.execute(params) }
-                assertTrue(exception.message!!.contains("Input connection not available"))
+                val result = tool.execute(params)
+                assertTrue(extractTextContent(result).contains("Field content: "))
             }
 
         @Test

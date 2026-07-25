@@ -13,7 +13,9 @@ import com.danielealbano.androidremotecontrolmcp.services.accessibility.Accessib
 import com.danielealbano.androidremotecontrolmcp.services.accessibility.AccessibilityTreeLock
 import com.danielealbano.androidremotecontrolmcp.services.accessibility.AccessibilityTreeParser
 import com.danielealbano.androidremotecontrolmcp.services.accessibility.ActionExecutor
+import com.danielealbano.androidremotecontrolmcp.services.accessibility.ElementFinder
 import com.danielealbano.androidremotecontrolmcp.services.accessibility.TypeInputController
+import com.danielealbano.androidremotecontrolmcp.services.accessibility.WindowData
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
@@ -38,7 +40,9 @@ private const val MIN_TYPING_SPEED_MS = 10
 private const val MAX_TYPING_SPEED_MS = 5000
 private const val MAX_SURROUNDING_TEXT_LENGTH = 10000
 private const val FOCUS_POLL_INTERVAL_MS = 50L
-private const val FOCUS_POLL_MAX_MS = 500L
+private const val FOCUS_POLL_MAX_MS = 1500L
+private const val ACTION_SET_TEXT_VERIFY_DELAY_MS = 150L
+private const val ACTION_SET_TEXT_FALLBACK_TAG = "MCP:TextInputFallback"
 private const val COMMIT_VERIFY_RETRY_DELAY_MS = 50L
 private const val COMMIT_MAX_RETRIES = 3
 private const val ADAPTIVE_DELAY_INCREASE_MS = 50
@@ -62,6 +66,13 @@ private fun keyboardOverlayHint(toolNamePrefix: String): String =
 private fun verificationAndKeyboardHint(toolNamePrefix: String): String =
     "Returns the field content after the operation for verification. " +
         keyboardOverlayHint(toolNamePrefix)
+
+private fun inputRoute(usedAccessibilityFallback: Boolean): String =
+    if (usedAccessibilityFallback) {
+        "verified accessibility ACTION_SET_TEXT fallback"
+    } else {
+        "natural InputConnection"
+    }
 
 /**
  * Mutex serializing all type tool operations.
@@ -376,6 +387,55 @@ internal fun readFieldContent(typeInputController: TypeInputController): String 
     return surroundingText.text.toString()
 }
 
+private fun findParsedNode(
+    windows: List<WindowData>,
+    nodeId: String,
+) = ElementFinder().findNodeById(windows, nodeId)
+
+/**
+ * Falls back to AccessibilityNodeInfo.ACTION_SET_TEXT when an app exposes an editable node but
+ * never provides an InputConnection (seen in Chromium/WebView on some OEM Android builds).
+ * The action is accepted only when a fresh accessibility readback exactly matches [desiredText].
+ */
+private suspend fun setTextWithAccessibilityFallback(
+    nodeId: String,
+    desiredText: String,
+    windows: List<WindowData>,
+    treeParser: AccessibilityTreeParser,
+    actionExecutor: ActionExecutor,
+    accessibilityServiceProvider: AccessibilityServiceProvider,
+    nodeCache: AccessibilityNodeCache,
+): String {
+    val parsedNode =
+        findParsedNode(windows, nodeId)
+            ?: throw McpToolException.NodeNotFound(
+                "Editable node '$nodeId' disappeared before ACTION_SET_TEXT fallback; " +
+                    "use screenshot/visual fallback instead.",
+            )
+    if (!parsedNode.editable) {
+        throw McpToolException.ActionFailed(
+            "Node '$nodeId' does not expose an editable accessibility action; " +
+                "use screenshot/visual fallback instead.",
+        )
+    }
+
+    actionExecutor.setTextOnNode(nodeId, desiredText, windows).onFailure { error ->
+        mapNodeActionException(error, nodeId)
+    }
+    delay(ACTION_SET_TEXT_VERIFY_DELAY_MS)
+
+    val verifiedWindows = getFreshWindows(treeParser, accessibilityServiceProvider, nodeCache).windows
+    val observedText = findParsedNode(verifiedWindows, nodeId)?.text.orEmpty()
+    if (observedText != desiredText) {
+        throw McpToolException.ActionFailed(
+            "ACTION_SET_TEXT fallback on node '$nodeId' could not be verified by readback; " +
+                "use screenshot/visual fallback instead.",
+        )
+    }
+    Log.d(ACTION_SET_TEXT_FALLBACK_TAG, "Verified ACTION_SET_TEXT fallback on node '$nodeId'")
+    return observedText
+}
+
 class TypeAppendTextTool
     @Inject
     constructor(
@@ -400,6 +460,7 @@ class TypeAppendTextTool
 
             val (typingSpeed, typingSpeedVariance) = extractTypingParams(arguments)
 
+            var usedAccessibilityFallback = false
             val fieldContent =
                 typeOperationMutex.withLock {
                     // Click to focus
@@ -407,8 +468,23 @@ class TypeAppendTextTool
                     val clickResult = actionExecutor.clickNode(nodeId, result.windows)
                     clickResult.onFailure { e -> mapNodeActionException(e, nodeId) }
 
-                    // Poll-retry for InputConnection readiness (max 500ms, 50ms interval)
-                    awaitInputConnectionReady(typeInputController, nodeId)
+                    // Prefer natural InputConnection typing. Some Chromium/WebView fields on OEM
+                    // builds never expose one, so use verified ACTION_SET_TEXT as a bounded fallback.
+                    try {
+                        awaitInputConnectionReady(typeInputController, nodeId)
+                    } catch (_: McpToolException.ActionFailed) {
+                        usedAccessibilityFallback = true
+                        val currentText = findParsedNode(result.windows, nodeId)?.text.orEmpty()
+                        return@withLock setTextWithAccessibilityFallback(
+                            nodeId,
+                            currentText + text,
+                            result.windows,
+                            treeParser,
+                            actionExecutor,
+                            accessibilityServiceProvider,
+                            nodeCache,
+                        )
+                    }
 
                     // Position cursor at end
                     // Note: offset + text.length gives the total text length only if
@@ -441,6 +517,7 @@ class TypeAppendTextTool
             Log.d(TAG, "type_append_text: typed ${text.length} chars on node '$nodeId'")
             return McpToolUtils.untrustedTextResult(
                 "Typed ${text.length} characters at end of node '$nodeId'.\n" +
+                    "Input route: ${inputRoute(usedAccessibilityFallback)}\n" +
                     "Field content: $fieldContent",
             )
         }
@@ -452,8 +529,8 @@ class TypeAppendTextTool
             server.addTool(
                 name = "$toolNamePrefix$TOOL_NAME",
                 description =
-                    "Type text character by character at the end of a text field. " +
-                        "Uses natural InputConnection typing (indistinguishable from keyboard input). " +
+                    "Type text at the end of a text field. Prefers natural InputConnection typing; " +
+                        "when unavailable, uses ACTION_SET_TEXT only if exact accessibility readback succeeds. " +
                         "Maximum text length: $MAX_TEXT_LENGTH characters. " +
                         "For text longer than $MAX_TEXT_LENGTH chars, call this tool multiple times — " +
                         "subsequent calls continue typing at the current cursor position. " +
@@ -535,6 +612,7 @@ class TypeInsertTextTool
 
             val (typingSpeed, typingSpeedVariance) = extractTypingParams(arguments)
 
+            var usedAccessibilityFallback = false
             val fieldContent =
                 typeOperationMutex.withLock {
                     // Click to focus
@@ -542,8 +620,27 @@ class TypeInsertTextTool
                     val clickResult = actionExecutor.clickNode(nodeId, result.windows)
                     clickResult.onFailure { e -> mapNodeActionException(e, nodeId) }
 
-                    // Poll-retry for InputConnection readiness
-                    awaitInputConnectionReady(typeInputController, nodeId)
+                    try {
+                        awaitInputConnectionReady(typeInputController, nodeId)
+                    } catch (_: McpToolException.ActionFailed) {
+                        usedAccessibilityFallback = true
+                        val currentText = findParsedNode(result.windows, nodeId)?.text.orEmpty()
+                        if (offset > currentText.length) {
+                            throw McpToolException.InvalidParams(
+                                "offset ($offset) exceeds text length (${currentText.length}) in node '$nodeId'",
+                            )
+                        }
+                        val desiredText = currentText.substring(0, offset) + text + currentText.substring(offset)
+                        return@withLock setTextWithAccessibilityFallback(
+                            nodeId,
+                            desiredText,
+                            result.windows,
+                            treeParser,
+                            actionExecutor,
+                            accessibilityServiceProvider,
+                            nodeCache,
+                        )
+                    }
 
                     // Validate offset against current text length
                     val surroundingText =
@@ -581,6 +678,7 @@ class TypeInsertTextTool
             Log.d(TAG, "type_insert_text: typed ${text.length} chars at offset $offset on '$nodeId'")
             return McpToolUtils.untrustedTextResult(
                 "Typed ${text.length} characters at offset $offset in node '$nodeId'.\n" +
+                    "Input route: ${inputRoute(usedAccessibilityFallback)}\n" +
                     "Field content: $fieldContent",
             )
         }
@@ -592,8 +690,8 @@ class TypeInsertTextTool
             server.addTool(
                 name = "$toolNamePrefix$TOOL_NAME",
                 description =
-                    "Type text character by character at a specific position in a text field. " +
-                        "Uses natural InputConnection typing (indistinguishable from keyboard input). " +
+                    "Type text at a specific position in a text field. Prefers natural InputConnection typing; " +
+                        "when unavailable, uses ACTION_SET_TEXT only if exact accessibility readback succeeds. " +
                         "Maximum text length: $MAX_TEXT_LENGTH characters. " +
                         verificationAndKeyboardHint(toolNamePrefix),
                 inputSchema =
@@ -712,6 +810,7 @@ class TypeReplaceTextTool
 
             val (typingSpeed, typingSpeedVariance) = extractTypingParams(arguments)
 
+            var usedAccessibilityFallback = false
             val fieldContent =
                 typeOperationMutex.withLock {
                     // Click to focus
@@ -719,8 +818,29 @@ class TypeReplaceTextTool
                     val clickResult = actionExecutor.clickNode(nodeId, result.windows)
                     clickResult.onFailure { e -> mapNodeActionException(e, nodeId) }
 
-                    // Poll-retry for InputConnection readiness
-                    awaitInputConnectionReady(typeInputController, nodeId)
+                    try {
+                        awaitInputConnectionReady(typeInputController, nodeId)
+                    } catch (_: McpToolException.ActionFailed) {
+                        usedAccessibilityFallback = true
+                        val currentText = findParsedNode(result.windows, nodeId)?.text.orEmpty()
+                        val searchIndex = currentText.indexOf(search)
+                        if (searchIndex == -1) {
+                            throw McpToolException.NodeNotFound(
+                                "Search text (${search.length} chars) not found in node '$nodeId'",
+                            )
+                        }
+                        val desiredText =
+                            currentText.replaceRange(searchIndex, searchIndex + search.length, newText)
+                        return@withLock setTextWithAccessibilityFallback(
+                            nodeId,
+                            desiredText,
+                            result.windows,
+                            treeParser,
+                            actionExecutor,
+                            accessibilityServiceProvider,
+                            nodeCache,
+                        )
+                    }
 
                     // Get current text and find the search string
                     val surroundingText =
@@ -785,6 +905,7 @@ class TypeReplaceTextTool
             )
             return McpToolUtils.untrustedTextResult(
                 "Replaced ${search.length} characters with ${newText.length} characters in node '$nodeId'.\n" +
+                    "Input route: ${inputRoute(usedAccessibilityFallback)}\n" +
                     "Field content: $fieldContent",
             )
         }
@@ -797,7 +918,8 @@ class TypeReplaceTextTool
             server.addTool(
                 name = "$toolNamePrefix$TOOL_NAME",
                 description =
-                    "Find and replace text in a field by typing the replacement naturally. " +
+                    "Find and replace text in a field. Prefers natural InputConnection typing and uses a " +
+                        "verified ACTION_SET_TEXT fallback only when InputConnection is unavailable. " +
                         "Finds the first occurrence of search text, deletes it, then types new_text " +
                         "character by character via InputConnection. " +
                         "Maximum new_text length: $MAX_TEXT_LENGTH characters. " +
@@ -888,6 +1010,7 @@ class TypeClearTextTool
                 throw McpToolException.InvalidParams("Parameter 'node_id' must be non-empty")
             }
 
+            var usedAccessibilityFallback = false
             val fieldContent =
                 typeOperationMutex.withLock {
                     // Click to focus
@@ -895,8 +1018,20 @@ class TypeClearTextTool
                     val clickResult = actionExecutor.clickNode(nodeId, result.windows)
                     clickResult.onFailure { e -> mapNodeActionException(e, nodeId) }
 
-                    // Poll-retry for InputConnection readiness
-                    awaitInputConnectionReady(typeInputController, nodeId)
+                    try {
+                        awaitInputConnectionReady(typeInputController, nodeId)
+                    } catch (_: McpToolException.ActionFailed) {
+                        usedAccessibilityFallback = true
+                        return@withLock setTextWithAccessibilityFallback(
+                            nodeId,
+                            "",
+                            result.windows,
+                            treeParser,
+                            actionExecutor,
+                            accessibilityServiceProvider,
+                            nodeCache,
+                        )
+                    }
 
                     // Check if field has text — skip clear if already empty
                     val surroundingText =
@@ -944,7 +1079,9 @@ class TypeClearTextTool
 
             Log.d(TAG, "type_clear_text: cleared text on node '$nodeId'")
             return McpToolUtils.untrustedTextResult(
-                "Text cleared from node '$nodeId'.\nField content: $fieldContent",
+                "Text cleared from node '$nodeId'.\n" +
+                    "Input route: ${inputRoute(usedAccessibilityFallback)}\n" +
+                    "Field content: $fieldContent",
             )
         }
 
@@ -955,8 +1092,8 @@ class TypeClearTextTool
             server.addTool(
                 name = "$toolNamePrefix$TOOL_NAME",
                 description =
-                    "Clear all text from a field naturally using select-all + delete. " +
-                        "Uses InputConnection operations (indistinguishable from user action). " +
+                    "Clear all text from a field. Prefers InputConnection select-all + delete; " +
+                        "when unavailable, uses ACTION_SET_TEXT only if exact accessibility readback succeeds. " +
                         verificationAndKeyboardHint(toolNamePrefix),
                 inputSchema =
                     ToolSchema(

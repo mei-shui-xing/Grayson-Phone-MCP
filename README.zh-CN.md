@@ -1,6 +1,6 @@
 # Grayson Phone MCP（中文说明）
 
-> Alpha 推荐配置：当前优先关闭 VPN 使用；开启 VPN 仍属于实验性。AI 执行期间请让手机由 AI 临时独占，主人继续在电脑上聊天。锁屏密码、生物识别、支付、OTP、系统权限与任何敏感授权必须由主人亲自完成；主人接回手机前先暂停远程触控。
+> Alpha 推荐配置：先用 USB 完成本地验收，再按需启用公网连接。Clash Meta 全局模式已在一台 OriginOS 设备上通过真机回归，但不代表所有 VPN、手机或系统版本都兼容。AI 执行期间请让手机由 AI 临时独占，主人继续在电脑上聊天。锁屏密码、生物识别、支付、OTP、系统权限与任何敏感授权必须由主人亲自完成；主人接回手机前先暂停远程触控。
 
 > 本仓库是 `danielealbano/android-remote-control-mcp` 的修改分支，继续保留上游 MIT 许可证与作者归属。
 > 目标是让 ChatGPT 等远程 AI 在本人可随时暂停的前提下，看屏、触控、输入和读取使用时长；不提供远程 Shell、任意 ADB 或权限绕过。
@@ -16,14 +16,21 @@
 
 首次安装、USB 调试、权限配置和本地验收才需要 Windows 电脑。公网连接必须在本地功能通过后再启用。
 
+## USB＋AI 环境配置建议
+
+推荐首次安装或排障时，用 USB 数据线连接手机与电脑、开启 USB 调试，并让可信的 AI 编程助手协助执行本仓库的 PowerShell 脚本。AI 可以帮助检查 ADB 授权、构建和安装 APK、核对无障碍/使用情况权限、建立临时端口映射、采集脱敏日志并运行无敏感内容的冒烟测试。
+
+项目处于 Alpha 阶段，不提供针对不同手机厂商、系统版本、代理/VPN、驱动、Android SDK 或个人电脑环境的逐机配置售后。遇到环境问题时，请优先把报错、日志和本仓库文档交给 AI 助手自助排查；这不代表 AI 可以绕过 Android 安全边界。锁屏解锁、生物识别、账号登录、验证码、支付、系统授权弹窗和其他敏感确认始终必须由设备主人完成。不要把 Bearer Token、账号凭据或私密聊天内容提交到 Issue。
+
 ## 当前底座与范围
 
-本项目基于 [`danielealbano/android-remote-control-mcp`](https://github.com/danielealbano/android-remote-control-mcp) 的手机端原生实现。MCP Server、Ktor HTTP 服务、无障碍节点读取、坐标手势、截图、中文 InputConnection 输入、OAuth 2.1、Bearer Token、前台服务和 Cloudflare/ngrok 隧道均直接运行在 Android 设备中。
+本项目基于 [`danielealbano/android-remote-control-mcp`](https://github.com/danielealbano/android-remote-control-mcp) 的手机端原生实现。MCP Server、Ktor HTTP 服务、无障碍节点读取、坐标手势、截图、中文输入、OAuth 2.1、Bearer Token、前台服务和 Cloudflare/ngrok 隧道均直接运行在 Android 设备中。
 
 核心策略是“节点优先，截图和坐标兜底”：
 
 - 普通原生页面优先读取文本、content description、resource id、节点边界和可操作属性。
 - WebView、Canvas、自绘页面和小程序没有足够节点时，仍可读取截图并按实时屏幕尺寸执行坐标触控。
+- 文字输入优先使用自然的 InputConnection；部分 Chrome/WebView 或厂商页面拿不到连接时，只对明确可编辑节点尝试 `ACTION_SET_TEXT`，并要求结构化回读与目标文本完全一致，否则明确失败并交给截图/视觉路线。工具结果会说明实际输入路线；备用路线不宣称与真人键盘输入不可区分。
 - 不提供远程 Shell 或任意 ADB 命令执行工具。
 - 不绕过锁屏、生物识别、系统权限确认或安全键盘。
 
