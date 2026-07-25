@@ -230,7 +230,6 @@ curl -s -D- -X POST http://localhost:8080/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl-client","version":"1.0.0"}}}'
 
 # Use the mcp-session-id from the response headers in all subsequent requests
-
 # List available tools
 curl -X POST http://localhost:8080/mcp \
   -H "Authorization: Bearer YOUR_TOKEN" \
@@ -271,7 +270,7 @@ The bearer token is shown in the app's connection info and can be copied directl
 | Port | `8080` | HTTP/HTTPS server port |
 | Binding Address | `127.0.0.1` | `127.0.0.1` (localhost, use with adb port forwarding) or `0.0.0.0` (network, all interfaces) |
 | Bearer Token | Enabled, auto-generated UUID | Static token for MCP requests (Settings → Access). Enforcement is set by the Bearer toggle, not by clearing the value. |
-| OAuth | Enabled | Self-contained OAuth 2.1 server for Claude.ai / Claude Desktop custom connectors (Settings → Access). |
+| OAuth | Enabled | Self-contained OAuth 2.1 server for Claude.ai / Claude Desktop connectors (Settings → Access). |
 | Public URL override | Empty (auto-detect) | Pin the public host used for OAuth metadata and share links. |
 | HTTPS | Disabled | Enable HTTPS with auto-generated self-signed certificate (configurable hostname) or upload custom .p12/.pfx |
 | Auto-start on Boot | Disabled | Start MCP server automatically when device boots |
@@ -474,3 +473,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for build requirements, testing, architec
 ## License
 
 This project is licensed under the MIT License. See [LICENSE.md](LICENSE.md) for details.
+
+## Related projects
+
+For the unified entry point to the Douyin, Windows PC, and Android phone MCP projects, see [mcp-tools-link-hub](https://github.com/mei-shui-xing/mcp-tools-link-hub).
