@@ -93,4 +93,3 @@ app/replay_*.log
 /.tmp-*
 /cloudflare-worker/.wrangler/
 /cloudflare-worker/wrangler.jsonc
-/docs/GRAYSON_AUDIT_zh-CN.md

@@ -1,4 +1,4 @@
-# Grayson Phone MCP（中文说明）
+# Android Remote Control MCP（中文说明）
 
 > Alpha 推荐配置：先用 USB 完成本地验收，再按需启用公网连接。Clash Meta 全局模式已在一台 OriginOS 设备上通过真机回归，但不代表所有 VPN、手机或系统版本都兼容。AI 执行期间请让手机由 AI 临时独占，主人继续在电脑上聊天。锁屏密码、生物识别、支付、OTP、系统权限与任何敏感授权必须由主人亲自完成；主人接回手机前先暂停远程触控。
 
@@ -127,7 +127,7 @@ MCP 端点是 `http://127.0.0.1:8080/mcp`。每次请求必须携带 App 中显�
 - `docs/PERMISSIONS.md`
 - `docs/PROJECT.md`
 
-本分支的审计结论、真机信息、测试记录、未完成项和已知问题见 `docs/GRAYSON_AUDIT_zh-CN.md`。
+本分支的审计结论、真机信息、测试记录、未完成项和已知问题见 `docs/ALPHA_AUDIT_zh-CN.md`。
 
 ## 相关项目
 

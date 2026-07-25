@@ -1,6 +1,6 @@
 # Third-party notices
 
-Grayson Phone MCP is a modified fork of [danielealbano/android-remote-control-mcp](https://github.com/danielealbano/android-remote-control-mcp). The upstream Git history and MIT `LICENSE.md` are retained.
+Android Remote Control MCP is a modified fork of [danielealbano/android-remote-control-mcp](https://github.com/danielealbano/android-remote-control-mcp). The upstream Git history and MIT `LICENSE.md` are retained.
 
 - `vendor/cloudflared` is the Cloudflare `cloudflared` submodule, Apache-2.0; its `LICENSE` is retained in the submodule.
 - `vendor/ngrok-java` is the upstream fork submodule at `danielealbano/ngrok-java`, dual Apache-2.0 or MIT; its `LICENSE` is retained.

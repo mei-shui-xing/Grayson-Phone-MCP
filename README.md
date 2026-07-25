@@ -2,7 +2,7 @@
 
 [简体中文说明](README.zh-CN.md)
 
-[![CI](https://github.com/mei-shui-xing/Grayson-Phone-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/mei-shui-xing/Grayson-Phone-MCP/actions/workflows/ci.yml)
+[![CI](https://github.com/mei-shui-xing/android-remote-control-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/mei-shui-xing/android-remote-control-mcp/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 An Android application that runs as an **MCP (Model Context Protocol) server**, enabling AI models to **fully control an Android device** remotely using accessibility services and screenshot capture.
@@ -11,7 +11,7 @@ The app runs directly on your Android device (or emulator) and exposes an HTTP s
 
 > **Warning:** This software is provided "as-is" without warranty of any kind, for **research and educational purposes only**. The authors do not condone the use of this tool for any illegal, unauthorized, or unethical activities. Users are solely responsible for ensuring their use complies with all applicable laws and regulations. By using this software, you agree to use it responsibly and at your own risk.
 
-> **Grayson Alpha operating policy:** validate locally over USB before enabling remote access. Clash Meta global mode passed device testing on one OriginOS phone, but compatibility is not guaranteed across VPNs, vendors or Android builds. While an AI task is running, give the phone to the AI exclusively and continue chatting from the computer. The owner must personally handle lock-screen credentials, biometrics, payments, OTP codes, permission grants and any other sensitive authorization. Pause remote touch before taking the phone back.
+> **Alpha operating policy:** validate locally over USB before enabling remote access. Clash Meta global mode passed device testing on one OriginOS phone, but compatibility is not guaranteed across VPNs, vendors or Android builds. While an AI task is running, give the phone to the AI exclusively and continue chatting from the computer. The owner must personally handle lock-screen credentials, biometrics, payments, OTP codes, permission grants and any other sensitive authorization. Pause remote touch before taking the phone back.
 
 ---
 
@@ -86,13 +86,13 @@ On the token efficiency side, ADB-based tools typically return raw `uiautomator`
 
 ### Option A: Download on your phone (easiest)
 
-1. Open the [Releases](https://github.com/mei-shui-xing/Grayson-Phone-MCP/releases) page on your phone's browser
+1. Open the [Releases](https://github.com/mei-shui-xing/android-remote-control-mcp/releases) page on your phone's browser
 2. Download the APK from the latest release
 3. Open the downloaded APK and follow the prompts to install it (you may need to allow installation from unknown sources)
 
 ### Option B: Download on your PC and install via ADB
 
-1. Download the APK from the [Releases](https://github.com/mei-shui-xing/Grayson-Phone-MCP/releases) page
+1. Download the APK from the [Releases](https://github.com/mei-shui-xing/android-remote-control-mcp/releases) page
 2. Connect your phone via USB (with USB Debugging enabled)
 3. Install the APK:
 ```bash
@@ -102,8 +102,8 @@ adb install app-release.apk
 ### Option C: Build from sources
 
 ```bash
-git clone https://github.com/mei-shui-xing/Grayson-Phone-MCP.git
-cd Grayson-Phone-MCP
+git clone https://github.com/mei-shui-xing/android-remote-control-mcp.git
+cd android-remote-control-mcp
 make build
 make install  # installs on connected device/emulator
 ```
